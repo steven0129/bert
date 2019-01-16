@@ -1,10 +1,9 @@
 import torch
 import jieba
-import numpy as np
 from torch import nn
 from tqdm import tqdm
 from sklearn import preprocessing
-from pytorch_pretrained_bert import BertTokenizer, BertModel, BertAdam
+from pytorch_pretrained_bert import BertModel, BertAdam
 
 MODEL_PATH = 'bert-model'
 EPOCH = 100
@@ -33,7 +32,7 @@ class LanGen(nn.Module):
 
 model = LanGen()
 model.cuda()
-optimizer = BertAdam(model.parameters(), lr=0.1)
+optimizer = BertAdam(model.parameters(), lr=0.001)
 data = []
 
 # Tokenized input
@@ -67,7 +66,7 @@ for epoch in tqdm(range(EPOCH)):
         optimizer.zero_grad()
         loss = model(torch.LongTensor([idx_summaries]).cuda(), torch.LongTensor(idx_texts).cuda()).loss
         loss.backward()
-        loss_sum += loss.item() / 512
+        loss_sum += loss.item()
         optimizer.step()
 
     torch.save({
