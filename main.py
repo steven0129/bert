@@ -1,13 +1,15 @@
 import torch
 import jieba
+import visdom
 from torch import nn
 from tqdm import tqdm
-from sklearn import preprocessing
 from pytorch_pretrained_bert import BertModel, BertAdam
 
+vis = visdom.Visdom()
 MODEL_PATH = 'bert-model'
 EPOCH = 100
 jieba.load_userdict('bert-model/dict-traditional.txt')
+
 
 # Load vocabularies
 vocab = {}
@@ -60,6 +62,8 @@ with open('pair.csv') as PAIR:
         data.append((idx_texts, idx_summaries))
 
 # Training
+losses = []
+
 for epoch in tqdm(range(EPOCH)):
     loss_sum = 0.0
     for idx_texts, idx_summaries in tqdm(data):
@@ -76,4 +80,17 @@ for epoch in tqdm(range(EPOCH)):
         'optimizer': optimizer.state_dict()
     }, f'checkpoint/bert-LanGen-epoch{epoch + 1}.pt')
 
-    tqdm.write(f'epoch = {epoch + 1}, loss = {loss_sum / len(data)}')
+    torch.save({
+        'epoch': epoch + 1,
+        'state': model.state_dict(),
+        'loss': loss_sum / len(data),
+        'optimizer': optimizer.state_dict()
+    }, f'checkpoint/bert-LanGen-last.pt')
+
+    log = f'epoch = {epoch + 1}, loss = {loss_sum / len(data)}'
+    losses.append(loss_sum / len(data))
+    vis.text('<b>LOG</b><br>' + log, win='log')
+    vis.line(Y=losses, win='loss')
+    with open('log.txt', 'a+') as LOG:
+        LOG.write(log)
+    tqdm.write(log)
