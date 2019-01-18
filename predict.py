@@ -30,7 +30,7 @@ class LanGen(nn.Module):
         return out
 
 model = LanGen()
-checkpoint = torch.load('checkpoint/bert-LanGen-epoch2.pt')
+checkpoint = torch.load('checkpoint/bert-LanGen-epoch1.pt')
 model.load_state_dict(checkpoint['state'])
 print('Info of model:')
 print(f'Epoch: {checkpoint["epoch"]}')

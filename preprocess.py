@@ -1,14 +1,11 @@
 import jieba
 from tqdm import tqdm
-from sklearn import preprocessing
 from collections import Counter
 
 jieba.load_userdict('bert-model/dict-traditional.txt')
 jieba.suggest_freq('<newline>', True)
-le = preprocessing.LabelEncoder()
 
 with open('pair.csv') as PAIR:
-    le = preprocessing.LabelEncoder()
     texts = []
     texts.append('<UNK>')
 

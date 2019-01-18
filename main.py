@@ -24,6 +24,7 @@ class LanGen(nn.Module):
         super(LanGen, self).__init__()
         self.model = BertModel.from_pretrained(MODEL_PATH)
         self.model.embeddings.word_embeddings = nn.Embedding(len(vocab), 768)
+        self.model.encoder.layer = self.model.encoder.layer[:3]
         self.model.eval()
         self.adaptive_softmax = nn.AdaptiveLogSoftmaxWithLoss(768, len(vocab), cutoffs=[782])
     
@@ -34,7 +35,7 @@ class LanGen(nn.Module):
 
 model = LanGen()
 model.cuda()
-optimizer = BertAdam(model.parameters(), lr=0.001)
+optimizer = BertAdam(model.parameters(), lr=0.01)
 data = []
 
 # Tokenized input
@@ -62,35 +63,48 @@ with open('pair.csv') as PAIR:
         data.append((idx_texts, idx_summaries))
 
 # Training
-losses = []
+training_data = data[:round(len(data) * 0.8)]
+testing_data = data[round(len(data) * 0.8) + 1:]
+training_losses = []
+testing_losses = []
 
 for epoch in tqdm(range(EPOCH)):
-    loss_sum = 0.0
-    for idx_texts, idx_summaries in tqdm(data):
+    training_loss_sum = 0.0
+    testing_loss_sum = 0.0
+    
+    for idx_texts, idx_summaries in tqdm(training_data):
         optimizer.zero_grad()
         loss = model(torch.LongTensor([idx_summaries]).cuda(), torch.LongTensor(idx_texts).cuda()).loss
         loss.backward()
-        loss_sum += loss.item()
+        training_loss_sum += loss.item()
         optimizer.step()
+
+    for idx_texts, idx_summaries in tqdm(testing_data):
+        loss = model(torch.LongTensor([idx_summaries]).cuda(), torch.LongTensor(idx_texts).cuda()).loss
+        testing_loss_sum += loss.item()
 
     torch.save({
         'epoch': epoch + 1,
         'state': model.state_dict(),
-        'loss': loss_sum / len(data),
+        'loss': training_loss_sum / len(training_data),
         'optimizer': optimizer.state_dict()
     }, f'checkpoint/bert-LanGen-epoch{epoch + 1}.pt')
 
     torch.save({
         'epoch': epoch + 1,
         'state': model.state_dict(),
-        'loss': loss_sum / len(data),
+        'loss': training_loss_sum / len(training_data),
         'optimizer': optimizer.state_dict()
     }, f'checkpoint/bert-LanGen-last.pt')
 
-    log = f'epoch = {epoch + 1}, loss = {loss_sum / len(data)}'
-    losses.append(loss_sum / len(data))
+    log = f'epoch = {epoch + 1}, training_loss = {training_loss_sum / len(training_data)}, testing_loss = {testing_loss_sum / len(testing_data)}'
+    training_losses.append(training_loss_sum / len(training_data))
+    testing_losses.append(testing_loss_sum / len(testing_data))
+    
     vis.text('<b>LOG</b><br>' + log, win='log')
-    vis.line(Y=losses, win='loss')
+    vis.line(X=list(range(len(training_losses))), Y=training_losses, win='loss', name='training_loss')
+    vis.line(X=list(range(len(testing_losses))), Y=testing_losses, win='loss', update='append', name='testing_loss')
+
     with open('log.txt', 'a+') as LOG:
-        LOG.write(log)
+        LOG.write(log + '\n')
     tqdm.write(log)
