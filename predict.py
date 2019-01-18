@@ -21,6 +21,7 @@ class LanGen(nn.Module):
         super(LanGen, self).__init__()
         self.model = BertModel.from_pretrained(MODEL_PATH)
         self.model.embeddings.word_embeddings = nn.Embedding(len(vocab), 768)
+        self.model.encoder.layer = self.model.encoder.layer[:3]
         self.model.eval()
         self.adaptive_softmax = nn.AdaptiveLogSoftmaxWithLoss(768, len(vocab), cutoffs=[782])
     
@@ -30,7 +31,7 @@ class LanGen(nn.Module):
         return out
 
 model = LanGen()
-checkpoint = torch.load('checkpoint/bert-LanGen-epoch1.pt')
+checkpoint = torch.load('checkpoint/bert-LanGen-last.pt')
 model.load_state_dict(checkpoint['state'])
 print('Info of model:')
 print(f'Epoch: {checkpoint["epoch"]}')

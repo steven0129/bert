@@ -7,7 +7,7 @@ from pytorch_pretrained_bert import BertModel, BertAdam
 
 vis = visdom.Visdom()
 MODEL_PATH = 'bert-model'
-EPOCH = 100
+EPOCH = 1000
 jieba.load_userdict('bert-model/dict-traditional.txt')
 
 
@@ -35,7 +35,7 @@ class LanGen(nn.Module):
 
 model = LanGen()
 model.cuda()
-optimizer = torch.optim.Adam(model.parameters())
+optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 data = []
 
 # Tokenized input
