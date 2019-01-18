@@ -30,12 +30,12 @@ class LanGen(nn.Module):
     
     def forward(self, x, target):
         encoder_layers, _ = self.model(x)
-        out = self.adaptive_softmax(encoder_layers[-1].view(512, 768), target)
+        out = self.adaptive_softmax(encoder_layers[-1].view(-1, 768), target)
         return out
 
 model = LanGen()
 model.cuda()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(model.parameters())
 data = []
 
 # Tokenized input
@@ -53,10 +53,9 @@ with open('pair.csv') as PAIR:
 
         texts.insert(0, '<SOS>')
         texts.append('<EOS>')
-        texts.extend(['<PAD>'] * (512 - len(texts)))
         summaries.insert(0, '<SOS>')
         summaries.append('<EOS>')
-        summaries.extend(['<PAD>'] * (512 - len(summaries)))
+        summaries.extend(['<PAD>'] * (len(texts) - len(summaries)))
 
         idx_texts = list(map(lambda x: vocab[x], texts[:512]))
         idx_summaries = list(map(lambda x: vocab[x], summaries[:512]))
