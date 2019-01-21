@@ -24,7 +24,6 @@ class LanGen(nn.Module):
         super(LanGen, self).__init__()
         self.model = BertModel.from_pretrained(MODEL_PATH)
         self.model.embeddings.word_embeddings = nn.Embedding(len(vocab), 768)
-        self.model.encoder.layer = self.model.encoder.layer[:3]
         self.model.eval()
         self.adaptive_softmax = nn.AdaptiveLogSoftmaxWithLoss(768, len(vocab), cutoffs=[782])
     
@@ -85,14 +84,16 @@ for epoch in tqdm(range(EPOCH)):
     torch.save({
         'epoch': epoch + 1,
         'state': model.state_dict(),
-        'loss': training_loss_sum / len(training_data),
+        'testing_loss': testing_loss_sum / len(testing_data),
+        'training_loss': training_loss_sum / len(training_data),
         'optimizer': optimizer.state_dict()
     }, f'checkpoint/bert-LanGen-epoch{epoch + 1}.pt')
 
     torch.save({
         'epoch': epoch + 1,
         'state': model.state_dict(),
-        'loss': training_loss_sum / len(training_data),
+        'testing_loss': testing_loss_sum / len(testing_data),
+        'training_loss': training_loss_sum / len(training_data),
         'optimizer': optimizer.state_dict()
     }, f'checkpoint/bert-LanGen-last.pt')
 
