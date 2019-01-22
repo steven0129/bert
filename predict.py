@@ -31,17 +31,18 @@ class LanGen(nn.Module):
         return out
 
 model = LanGen()
-checkpoint = torch.load('checkpoint/bert-LanGen-last.pt')
+checkpoint = torch.load('bert-LanGen-epoch800.pt')
 model.load_state_dict(checkpoint['state'])
 print('Info of model:')
 print(f'Epoch: {checkpoint["epoch"]}')
 print(f'Loss: {checkpoint["loss"]}')
 
 summary = '大理國無量山無量劍派的練武廳中，舉辦了五年一次的比武鬥劍大會，由無量劍的東、北、西三宗互相比試。此次是第九次大會。'
+#summary = '慕容復已經發瘋，兩女在旁陪伴，段譽起惻隱之心，暗中派人資助。'
 summary = list(jieba.cut(summary))
 summary.insert(0, '<SOS>')
 summary.append('<EOS>')
 summary.extend(['<PAD>'] * (512 - len(summary)))
 idx_summary = list(map(lambda x: vocab[x], summary[:512]))
 out = model(torch.LongTensor([idx_summary])).tolist()
-print(list(map(lambda x: id2vocab[x], out)))
+print(''.join(list(map(lambda x: id2vocab[x], out))))

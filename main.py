@@ -3,13 +3,15 @@ import jieba
 import visdom
 from torch import nn
 from tqdm import tqdm
+from multiprocessing import Pool
 from pytorch_pretrained_bert import BertModel, BertAdam
 
 vis = visdom.Visdom()
 MODEL_PATH = 'bert-model'
 EPOCH = 1000
+process = Pool()
 jieba.load_userdict('bert-model/dict-traditional.txt')
-
+jieba.suggest_freq('<newline>', True)
 
 # Load vocabularies
 vocab = {}
@@ -24,8 +26,9 @@ class LanGen(nn.Module):
         super(LanGen, self).__init__()
         self.model = BertModel.from_pretrained(MODEL_PATH)
         self.model.embeddings.word_embeddings = nn.Embedding(len(vocab), 768)
+        self.model.encoder.layer = self.model.encoder.layer[:3]
         self.model.eval()
-        self.adaptive_softmax = nn.AdaptiveLogSoftmaxWithLoss(768, len(vocab), cutoffs=[782])
+        self.adaptive_softmax = nn.AdaptiveLogSoftmaxWithLoss(768, len(vocab), cutoffs=[994])
     
     def forward(self, x, target):
         encoder_layers, _ = self.model(x)
@@ -38,7 +41,7 @@ optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 data = []
 
 # Tokenized input
-with open('pair.csv') as PAIR:
+with open('pair-lcstcs100000.csv') as PAIR:
     for line in tqdm(PAIR):
         [text, summary] = line.split(',')
         texts = []
@@ -50,12 +53,15 @@ with open('pair.csv') as PAIR:
 
         summaries.extend(list(jieba.cut(summary)))
 
+        texts = list(filter(lambda x: x != '\n', texts))
+        summaries = list(filter(lambda x: x != '\n', summaries))
+
         texts.insert(0, '<SOS>')
         texts.append('<EOS>')
         summaries.insert(0, '<SOS>')
         summaries.append('<EOS>')
         summaries.extend(['<PAD>'] * (len(texts) - len(summaries)))
-
+        
         idx_texts = list(map(lambda x: vocab[x], texts[:512]))
         idx_summaries = list(map(lambda x: vocab[x], summaries[:512]))
         data.append((idx_texts, idx_summaries))
