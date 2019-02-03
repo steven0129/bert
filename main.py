@@ -5,8 +5,10 @@ from torch import nn
 from tqdm import tqdm
 from multiprocessing import Pool
 from pytorch_pretrained_bert import BertModel, BertAdam
+from gensim.models.fasttext import FastText
 
 vis = visdom.Visdom()
+word2vec = FastText.load_fasttext_format('bert-model/wordvec-small')
 MODEL_PATH = 'bert-model'
 EPOCH = 1000
 process = Pool()
@@ -15,18 +17,21 @@ jieba.suggest_freq('<newline>', True)
 
 # Load vocabularies
 vocab = {}
+vec = []
 with open('bert-model/TF.csv') as TF:
     for idx, line in enumerate(TF):
         term = line.split(',')[0]
         vocab[term] = idx
+        vec.append(word2vec[term])
 
 # BERT Model
 class LanGen(nn.Module):
     def __init__(self):
         super(LanGen, self).__init__()
         self.model = BertModel.from_pretrained(MODEL_PATH)
-        self.model.embeddings.word_embeddings = nn.Embedding(len(vocab), 768)
-        self.model.encoder.layer = self.model.encoder.layer[:3]
+        weight = torch.FloatTensor(vec)
+        self.model.embeddings.word_embeddings = nn.Embedding.from_pretrained(weight)
+        # self.model.encoder.layer = self.model.encoder.layer[:3]
         self.model.eval()
         self.adaptive_softmax = nn.AdaptiveLogSoftmaxWithLoss(768, len(vocab), cutoffs=[994])
     
@@ -41,7 +46,7 @@ optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 data = []
 
 # Tokenized input
-with open('pair-lcstcs100000.csv') as PAIR:
+with open('pair.csv') as PAIR:
     for line in tqdm(PAIR):
         [text, summary] = line.split(',')
         texts = []
@@ -87,21 +92,22 @@ for epoch in tqdm(range(EPOCH)):
         loss = model(torch.LongTensor([idx_summaries]).cuda(), torch.LongTensor(idx_texts).cuda()).loss
         testing_loss_sum += loss.item()
 
-    torch.save({
-        'epoch': epoch + 1,
-        'state': model.state_dict(),
-        'testing_loss': testing_loss_sum / len(testing_data),
-        'training_loss': training_loss_sum / len(training_data),
-        'optimizer': optimizer.state_dict()
-    }, f'checkpoint/bert-LanGen-epoch{epoch + 1}.pt')
+    if (epoch + 1) % 50 == 0:
+        torch.save({
+            'epoch': epoch + 1,
+            'state': model.state_dict(),
+            'testing_loss': testing_loss_sum / len(testing_data),
+            'training_loss': training_loss_sum / len(training_data),
+            'optimizer': optimizer.state_dict()
+        }, f'checkpoint/bert-LanGen-epoch{epoch + 1}.pt')
 
-    torch.save({
-        'epoch': epoch + 1,
-        'state': model.state_dict(),
-        'testing_loss': testing_loss_sum / len(testing_data),
-        'training_loss': training_loss_sum / len(training_data),
-        'optimizer': optimizer.state_dict()
-    }, f'checkpoint/bert-LanGen-last.pt')
+        torch.save({
+            'epoch': epoch + 1,
+            'state': model.state_dict(),
+            'testing_loss': testing_loss_sum / len(testing_data),
+            'training_loss': training_loss_sum / len(training_data),
+            'optimizer': optimizer.state_dict()
+        }, f'checkpoint/bert-LanGen-last.pt')
 
     log = f'epoch = {epoch + 1}, training_loss = {training_loss_sum / len(training_data)}, testing_loss = {testing_loss_sum / len(testing_data)}'
     training_losses.append(training_loss_sum / len(training_data))

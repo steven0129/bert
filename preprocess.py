@@ -17,7 +17,6 @@ print('前處理詞頻...')
 
 with open('pair.csv') as PAIR:
     for line in tqdm(PAIR):
-        tqdm.write(line[:10])
         [text, summary] = line.split(',')
         addKey('<SOS>')
         addKey('<EOS>')
@@ -45,7 +44,6 @@ print('前處理FastText...')
 
 with open('pair.csv') as PAIR:
     for line in tqdm(PAIR):
-        tqdm.write(line[:10])
         [text, summary] = line.split(',')
 
         with open('bert-model/sents.txt', 'a') as OUT:
