@@ -4,3 +4,4 @@ log.txt
 pair-lcstcs100000.csv
 pair-lcstcs100000+origin.csv
 pair-lcstcs.csv
+__pycache__/
