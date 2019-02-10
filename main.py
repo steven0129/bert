@@ -10,6 +10,7 @@ from torch.autograd import Variable
 vis = visdom.Visdom()
 word2vec = FastText.load_fasttext_format('bert-model/wordvec-small')
 EPOCH = 1000
+UNSUPERVISED_EPOCH = 20
 process = Pool()
 jieba.load_userdict('bert-model/dict-traditional.txt')
 jieba.suggest_freq('<newline>', True)
@@ -29,8 +30,45 @@ model.cuda()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
 label_smoothing.cuda()
+DRAW_LEARNING_CURVE = True
 SAVE_EVERY = 50
 data = []
+unsupervised_data = []
+
+# Unsupervised Learning
+unsupervised_losses = []
+with open('bert-model/unsupervised.txt') as UN:
+    for line in tqdm(UN):
+        [word, context] = line.split(',')
+        context = context.strip().split(' ')
+        idx_word = [vocab[word]] + [vocab['<PAD>']] * (len(context) - 1)
+        idx_context = list(map(lambda x: vocab[x], context))
+        unsupervised_data.append((idx_word, idx_context))
+
+for epoch in tqdm(range(UNSUPERVISED_EPOCH)):
+    loss_sum = 0.0
+
+    for idx, (idx_word, idx_context) in enumerate(tqdm(unsupervised_data)):
+        optimizer.zero_grad()
+        inputTensor = torch.LongTensor([idx_word]).cuda()
+        targetTensor = torch.LongTensor(idx_context).cuda()
+        output, _ = model(inputTensor)
+        loss = label_smoothing(output, targetTensor)
+        loss.backward()
+        loss_sum += loss.item()
+        if idx % 1000 == 0:
+            tqdm.write(f'epoch = {epoch + 1}, 第{idx}筆loss: {loss_sum / (idx + 1)}')
+        optimizer.step()
+
+    unsupervised_losses.append(loss_sum / len(unsupervised_data))
+    vis.line(X=list(range(len(unsupervised_losses))), Y=unsupervised_losses, win='unsupervised_loss', name='unsupervised_loss')
+
+    torch.save({
+        'epoch': epoch + 1,
+        'state': model.state_dict(),
+        'loss': loss_sum / len(unsupervised_data),
+        'optimizer': optimizer.state_dict()
+    }, f'checkpoint/unsupervised-bert-epoch{epoch + 1}.pt')
 
 # Tokenized input
 with open('pair.csv') as PAIR:
@@ -80,7 +118,7 @@ for epoch in tqdm(range(EPOCH)):
         training_loss_sum += loss.item()
         optimizer.step()
 
-        if (epoch + 1) % SAVE_EVERY == 0:
+        if (epoch + 1) % SAVE_EVERY == 0 and DRAW_LEARNING_CURVE:
             learning_curve_training.append(training_loss_sum / (index + 1))
             testing_every_loss = []
             for idx_texts, idx_summaries in testing_data:
@@ -121,7 +159,7 @@ for epoch in tqdm(range(EPOCH)):
     vis.text('<b>LOG</b><br>' + log, win='log')
     vis.line(X=list(range(len(training_losses))), Y=training_losses, win='loss', name='training_loss')
     vis.line(X=list(range(len(testing_losses))), Y=testing_losses, win='loss', update='append', name='testing_loss')
-    if (epoch + 1) % SAVE_EVERY == 0:
+    if (epoch + 1) % SAVE_EVERY == 0 and DRAW_LEARNING_CURVE:
         vis.line(X=list(range(len(learning_curve_training))), Y=learning_curve_training, win='Learning Curve', name='learning_curve_training')
         vis.line(X=list(range(len(learning_curve_testing))), Y=learning_curve_testing, win='Learning Curve', update='append', name='learning_curve_testing')
 

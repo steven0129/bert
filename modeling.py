@@ -10,7 +10,7 @@ class LanGen(nn.Module):
         super(LanGen, self).__init__()
         self.model = BertModel.from_pretrained(MODEL_PATH)
         weight = torch.FloatTensor(pretrained_vec)
-        self.model.embeddings.word_embeddings = nn.Embedding.from_pretrained(weight)
+        self.model.embeddings.word_embeddings = nn.Embedding.from_pretrained(embeddings=weight, freeze=False)
         self.model.encoder.layer = self.model.encoder.layer[:3]
         self.model.eval()
         self.adaptive_softmax = nn.AdaptiveLogSoftmaxWithLoss(768, len(vocab), cutoffs=[994])
