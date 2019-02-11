@@ -19,6 +19,7 @@ jieba.suggest_freq('<newline>', True)
 vocab = {}
 vec = []
 with open('bert-model/TF.csv') as TF:
+    print('建構詞向量...')
     for idx, line in enumerate(TF):
         term = line.split(',')[0]
         vocab[term] = idx
@@ -33,9 +34,9 @@ label_smoothing.cuda()
 DRAW_LEARNING_CURVE = True
 SAVE_EVERY = 50
 data = []
-unsupervised_data = []
 
 # Unsupervised Learning
+unsupervised_data = []
 unsupervised_losses = []
 with open('bert-model/unsupervised.txt') as UN:
     for line in tqdm(UN):
