@@ -8,7 +8,7 @@ from gensim.models.fasttext import FastText
 from torch.autograd import Variable
 
 vis = visdom.Visdom()
-word2vec = FastText.load_fasttext_format('bert-model/wordvec-small')
+word2vec = FastText.load_fasttext_format('bert-model/wordvec-large')
 EPOCH = 1000
 UNSUPERVISED_EPOCH = 20
 process = Pool()
@@ -26,50 +26,22 @@ with open('bert-model/TF.csv') as TF:
         vec.append(word2vec[term])
 
 # BERT Model
+#loading_model = torch.load('bert-LanGen-epoch200.base.pt')
+#print('Pretrained Model Loading...')
+#print(f'epoch={loading_model["epoch"]}')
+#print(f'training_loss={loading_model["training_loss"]}')
+#print(f'testing_loss={loading_model["testing_loss"]}')
+#pretrained_model = modeling.LanGen(vocab, vec)
+#pretrained_model.load_state_dict(loading_model['state'])
 model = modeling.LanGen(vocab, vec)
 model.cuda()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+optimizer_penalty = torch.optim.SGD(model.parameters(), lr=0.01, weight_decay=0.005)
 label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
 label_smoothing.cuda()
-DRAW_LEARNING_CURVE = True
+DRAW_LEARNING_CURVE = False
 SAVE_EVERY = 50
 data = []
-
-# Unsupervised Learning
-unsupervised_data = []
-unsupervised_losses = []
-with open('bert-model/unsupervised.txt') as UN:
-    for line in tqdm(UN):
-        [word, context] = line.split(',')
-        context = context.strip().split(' ')
-        idx_word = [vocab[word]] + [vocab['<PAD>']] * (len(context) - 1)
-        idx_context = list(map(lambda x: vocab[x], context))
-        unsupervised_data.append((idx_word, idx_context))
-
-for epoch in tqdm(range(UNSUPERVISED_EPOCH)):
-    loss_sum = 0.0
-
-    for idx, (idx_word, idx_context) in enumerate(tqdm(unsupervised_data)):
-        optimizer.zero_grad()
-        inputTensor = torch.LongTensor([idx_word]).cuda()
-        targetTensor = torch.LongTensor(idx_context).cuda()
-        output, _ = model(inputTensor)
-        loss = label_smoothing(output, targetTensor)
-        loss.backward()
-        loss_sum += loss.item()
-        if idx % 1000 == 0:
-            tqdm.write(f'epoch = {epoch + 1}, 第{idx}筆loss: {loss_sum / (idx + 1)}')
-        optimizer.step()
-
-    unsupervised_losses.append(loss_sum / len(unsupervised_data))
-    vis.line(X=list(range(len(unsupervised_losses))), Y=unsupervised_losses, win='unsupervised_loss', name='unsupervised_loss')
-
-    torch.save({
-        'epoch': epoch + 1,
-        'state': model.state_dict(),
-        'loss': loss_sum / len(unsupervised_data),
-        'optimizer': optimizer.state_dict()
-    }, f'checkpoint/unsupervised-bert-epoch{epoch + 1}.pt')
 
 # Tokenized input
 with open('pair.csv') as PAIR:
@@ -108,16 +80,17 @@ for epoch in tqdm(range(EPOCH)):
     testing_loss_sum = 0.0
     learning_curve_training = []
     learning_curve_testing = []
+    optim = optimizer
     
     for index, (idx_texts, idx_summaries) in enumerate(tqdm(training_data)):
-        optimizer.zero_grad()
+        optim.zero_grad()
         inputTensor = torch.LongTensor([idx_summaries]).cuda()
         targetTensor = torch.LongTensor(idx_texts).cuda()
         output, _ = model(inputTensor)
         loss = label_smoothing(output, targetTensor)
         loss.backward()
         training_loss_sum += loss.item()
-        optimizer.step()
+        optim.step()
 
         if (epoch + 1) % SAVE_EVERY == 0 and DRAW_LEARNING_CURVE:
             learning_curve_training.append(training_loss_sum / (index + 1))
