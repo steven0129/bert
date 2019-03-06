@@ -15,7 +15,7 @@ def addKey(key):
 
 print('前處理詞頻...')
 
-with open('pair.csv') as PAIR:
+with open('pair+lcstcs.csv') as PAIR:
     for line in tqdm(PAIR):
         [text, summary] = line.split(',')
         addKey('<SOS>')
@@ -42,7 +42,7 @@ with open('pair.csv') as PAIR:
 
 print('前處理FastText...')
 
-with open('pair.csv') as PAIR:
+with open('pair+lcstcs.csv') as PAIR:
     for line in tqdm(PAIR):
         [text, summary] = line.split(',')
 
@@ -67,32 +67,3 @@ with open('pair.csv') as PAIR:
                 OUT.write('<PAD> ')
 
             OUT.write('\n')
-
-print('前處理Unsupervised Learning...')
-
-with open('pair.csv') as PAIR:
-    for line in tqdm(PAIR):
-        [text, summary] = line.split(',')
-
-        with open('bert-model/unsupervised.txt', 'a') as OUT:
-            paras = text.strip().split('<newline>')
-            words = []
-            for para in paras:
-                for word in jieba.cut(para):
-                    words.append(word)
-
-                if len(paras) != 1: words.append('<newline>')
-            
-            for idx, word in enumerate(words):
-                left = (idx - 2) if (idx - 2) >= 0 else 0
-                right = idx + 3
-                OUT.write(f'{word},{" ".join(words[left:right])}\n')
-            
-            words = []
-            for word in jieba.cut(summary.strip()):
-                words.append(word)
-
-            for idx, word in enumerate(words):
-                left = (idx - 2) if (idx - 2) >= 0 else 0
-                right = idx + 3
-                OUT.write(f'{word},{" ".join(words[left:right])}\n')

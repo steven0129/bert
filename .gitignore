@@ -1,7 +1,10 @@
 bert-model/
 *.pt
 log.txt
+log-layer*.txt
 pair-lcstcs100000.csv
 pair-lcstcs100000+origin.csv
 pair-lcstcs.csv
+pair+lcstcs*.csv
 __pycache__/
+wordvec-large.*.bin
