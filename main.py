@@ -29,8 +29,11 @@ with open('bert-model/TF.csv') as TF:
 del word2vec
 
 # BERT Model
-model = modeling.LanGen(hidden_size=768)
+model = modeling.LanGen(vocab, vec, hidden_size=768)
+model.cuda()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
+label_smoothing.cuda()
 SAVE_EVERY = 50
 PENALTY_EPOCH = -1
 DRAW_LEARNING_CURVE = False
@@ -38,7 +41,7 @@ data = []
 
 # Tokenized input
 print('Tokenization...')
-with open('pair+lcstcs10000.csv') as PAIR:
+with open('pair.csv') as PAIR:
     for line in tqdm(PAIR):
         [text, summary] = line.split(',')
         texts = []
@@ -64,60 +67,61 @@ with open('pair+lcstcs10000.csv') as PAIR:
         data.append((idx_texts, idx_summaries))
 
 # Training
-sky_dragon_data = data[:1415]
-lcstcs_data = data[1415:]
-training_data = sky_dragon_data[:round(len(sky_dragon_data) * 0.8)]
-testing_data = sky_dragon_data[round(len(sky_dragon_data) * 0.8):]
-training_data.extend(lcstcs_data[:round(len(lcstcs_data) * 0.8)])
-testing_data.extend(lcstcs_data[round(len(lcstcs_data) * 0.8):])
-
-BATCH_SIZE = 1
-
+training_data = data[:round(len(data))]
+testing_data = []
 training_losses = []
 testing_losses = []
 
 for epoch in tqdm(range(EPOCH)):
     training_loss_sum = 0.0
     testing_loss_sum = 0.0
+    learning_curve_training = []
+    learning_curve_testing = []
+    optim = optimizer
     
-    for batchIdx in tqdm(range(BATCH_SIZE, len(training_data), BATCH_SIZE)):
-        batch = training_data[batchIdx - BATCH_SIZE : batchIdx]
-        optimizer.zero_grad()
-        training_batch_loss = 0.0
-        training_loss = torch.tensor(0.0).cuda()
-        for index, (idx_texts, idx_summaries) in enumerate(batch):
-            inputTensor = torch.LongTensor([idx_summaries]).cuda()
-            targetTensor = torch.LongTensor(idx_texts).cuda()
-            loss = torch.mean(model(inputTensor, targetTensor))
-            training_loss += loss
-            training_batch_loss += loss.item()
+    for index, (idx_texts, idx_summaries) in enumerate(tqdm(training_data)):
+        optim.zero_grad()
+        inputTensor = torch.LongTensor([idx_summaries]).cuda()
+        targetTensor = torch.LongTensor(idx_texts).cuda()
+        output, _ = model(inputTensor)
+        loss = label_smoothing(output, targetTensor)
+        loss.backward()
+        training_loss_sum += loss.item()
+        optim.step()
 
-        training_loss_sum += training_batch_loss
-        training_loss.backward()
-        optimizer.step()
+        if (epoch + 1) % SAVE_EVERY == 0 and DRAW_LEARNING_CURVE:
+            learning_curve_training.append(training_loss_sum / (index + 1))
+            testing_every_loss = []
+            for idx_texts, idx_summaries in testing_data:
+                inputTensor = torch.LongTensor([idx_summaries]).cuda()
+                targetTensor = torch.LongTensor(idx_texts).cuda()
+                output, _ = model(inputTensor)
+                testing_every_loss.append(label_smoothing(output, targetTensor).item())
+            learning_curve_testing.append(sum(testing_every_loss) / len(testing_every_loss))
 
     for idx_texts, idx_summaries in tqdm(testing_data):
         inputTensor = torch.LongTensor([idx_summaries]).cuda()
         targetTensor = torch.LongTensor(idx_texts).cuda()
-        loss = torch.mean(model(inputTensor, targetTensor))
+        output, _ = model(inputTensor)
+        loss = label_smoothing(output, targetTensor)
         testing_loss_sum += loss.item()
 
-    # if (epoch + 1) % SAVE_EVERY == 0:
-    #     torch.save({
-    #         'epoch': epoch + 1,
-    #         'state': model.state_dict(),
-    #         'testing_loss': testing_loss_sum / len(testing_data),
-    #         'training_loss': training_loss_sum / len(training_data),
-    #         'optimizer': optim.state_dict()
-    #     }, f'checkpoint/bert-LanGen-epoch{epoch + 1}.pt')
+    if (epoch + 1) % SAVE_EVERY == 0:
+        torch.save({
+            'epoch': epoch + 1,
+            'state': model.state_dict(),
+            'testing_loss': testing_loss_sum / len(testing_data),
+            'training_loss': training_loss_sum / len(training_data),
+            'optimizer': optimizer.state_dict()
+        }, f'checkpoint/bert-LanGen-epoch{epoch + 1}.pt')
 
-    # torch.save({
-    #     'epoch': epoch + 1,
-    #     'state': model.state_dict(),
-    #     'testing_loss': testing_loss_sum / len(testing_data),
-    #     'training_loss': training_loss_sum / len(training_data),
-    #     'optimizer': optim.state_dict()
-    # }, f'checkpoint/bert-LanGen-last.pt')
+        torch.save({
+            'epoch': epoch + 1,
+            'state': model.state_dict(),
+            'testing_loss': testing_loss_sum / len(testing_data),
+            'training_loss': training_loss_sum / len(training_data),
+            'optimizer': optimizer.state_dict()
+        }, f'checkpoint/bert-LanGen-last.pt')
 
     log = f'epoch = {epoch + 1}, training_loss = {training_loss_sum / len(training_data)}, testing_loss = {testing_loss_sum / len(testing_data)}'
     training_losses.append(training_loss_sum / len(training_data))
@@ -126,9 +130,9 @@ for epoch in tqdm(range(EPOCH)):
     vis.text('<b>LOG</b><br>' + log, win='log')
     vis.line(X=list(range(len(training_losses))), Y=training_losses, win='loss', name='training_loss')
     vis.line(X=list(range(len(testing_losses))), Y=testing_losses, win='loss', update='append', name='testing_loss')
-    # if (epoch + 1) % SAVE_EVERY == 0 and DRAW_LEARNING_CURVE:
-    #     vis.line(X=list(range(len(learning_curve_training))), Y=learning_curve_training, win='Learning Curve', name='learning_curve_training')
-    #     vis.line(X=list(range(len(learning_curve_testing))), Y=learning_curve_testing, win='Learning Curve', update='append', name='learning_curve_testing')
+    if (epoch + 1) % SAVE_EVERY == 0 and DRAW_LEARNING_CURVE:
+        vis.line(X=list(range(len(learning_curve_training))), Y=learning_curve_training, win='Learning Curve', name='learning_curve_training')
+        vis.line(X=list(range(len(learning_curve_testing))), Y=learning_curve_testing, win='Learning Curve', update='append', name='learning_curve_testing')
 
     with open('log.txt', 'a+') as LOG:
         LOG.write(log + '\n')
