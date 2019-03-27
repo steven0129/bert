@@ -19,13 +19,9 @@ def addKey(key):
 print('前處理詞頻與類別...')
 with open('pair.csv') as PAIR:
     for line in tqdm(PAIR):
-        try:
-            [text, summary, label] = line.split(',')
-        except:
-            print(line)
-            sys.exit()
+        [text, summary, label] = line.split(',')
         
-        classes.add(label)
+        classes.add(label.replace('\n', ''))
         addKey('<SOS>')
         addKey('<EOS>')
         paras = text.split('<newline>')
@@ -43,6 +39,7 @@ with open('pair.csv') as PAIR:
     counts = sorted(hashTable.items(), key=lambda x: x[1], reverse=True)
     top10_texts = list(map(lambda x: x[0], counts[:10]))
     print(f'Top 10: {",".join(top10_texts)}')
+    print(f'{len(classes)} Classes: {",".join(classes)}')
 
     with open('bert-model/TF.csv', 'w') as TF:
         for text, count in tqdm(counts):
@@ -50,7 +47,7 @@ with open('pair.csv') as PAIR:
 
     with open('bert-model/classes.txt', 'w') as CLASS:
         for text in tqdm(classes):
-            CLASS.write(f'{text}\n')
+            CLASS.write(f'{text}')
 
 print('前處理FastText...')
 with open('pair+lcstcs.csv') as PAIR:
