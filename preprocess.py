@@ -1,5 +1,6 @@
 import jieba
 import random
+import sys
 from tqdm import tqdm
 from collections import Counter
 
@@ -18,7 +19,12 @@ def addKey(key):
 print('前處理詞頻與類別...')
 with open('pair.csv') as PAIR:
     for line in tqdm(PAIR):
-        [text, summary, label] = line.split(',')
+        try:
+            [text, summary, label] = line.split(',')
+        except:
+            print(line)
+            sys.exit()
+        
         classes.add(label)
         addKey('<SOS>')
         addKey('<EOS>')
@@ -49,7 +55,8 @@ with open('pair.csv') as PAIR:
 print('前處理FastText...')
 with open('pair+lcstcs.csv') as PAIR:
     for line in tqdm(PAIR):
-        [text, summary, _] = line.split(',')
+        text = line.split(',')[0]
+        summary = line.split(',')[1]
 
         with open('bert-model/sents.txt', 'a') as OUT:
             OUT.write('<SOS> ')
