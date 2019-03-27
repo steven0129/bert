@@ -29,11 +29,11 @@ with open('bert-model/TF.csv') as TF:
 del word2vec
 
 # BERT Model
-model = modeling.LanGen(vocab, vec, hidden_size=768)
+model = modeling.Discriminator(vec, hidden_size=768)
 model.cuda()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
-label_smoothing.cuda()
+# label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
+# label_smoothing.cuda()
 SAVE_EVERY = 50
 PENALTY_EPOCH = -1
 DRAW_LEARNING_CURVE = False
@@ -41,30 +41,13 @@ data = []
 
 # Tokenized input
 print('Tokenization...')
-with open('pair.csv') as PAIR:
+with open('bert-model/noise.txt') as PAIR:
     for line in tqdm(PAIR):
-        [text, summary] = line.split(',')
-        texts = []
-        summaries = []
-        paras = text.split('<newline>')
-        for para in paras:
-            texts.extend(list(jieba.cut(para)))
-            texts.append('<newline>')
-
-        summaries.extend(list(jieba.cut(summary)))
-
-        texts = list(filter(lambda x: x != '\n', texts))
-        summaries = list(filter(lambda x: x != '\n', summaries))
-
-        texts.insert(0, '<SOS>')
-        texts.append('<EOS>')
-        summaries.insert(0, '<SOS>')
-        summaries.append('<EOS>')
-        summaries.extend(['<PAD>'] * (len(texts) - len(summaries)))
-        
+        [text, tgt] = line.split(',')
+        texts = text.split(' ')
         idx_texts = list(map(lambda x: vocab[x], texts[:512]))
-        idx_summaries = list(map(lambda x: vocab[x], summaries[:512]))
-        data.append((idx_texts, idx_summaries))
+        idx_tgt = [1, 0] if tgt == 'True' else [0, 1]
+        data.append((idx_texts, idx_tgt))
 
 # Training
 training_data = data[:round(len(data))]
@@ -79,12 +62,12 @@ for epoch in tqdm(range(EPOCH)):
     learning_curve_testing = []
     optim = optimizer
     
-    for index, (idx_texts, idx_summaries) in enumerate(tqdm(training_data)):
+    for index, (idx_texts, idx_tgt) in enumerate(tqdm(training_data)):
         optim.zero_grad()
-        inputTensor = torch.LongTensor([idx_summaries]).cuda()
-        targetTensor = torch.LongTensor(idx_texts).cuda()
+        inputTensor = torch.LongTensor([idx_texts]).cuda()
+        targetTensor = torch.FloatTensor(idx_tgt).cuda()
         output, _ = model(inputTensor)
-        loss = label_smoothing(output, targetTensor)
+        loss = nn.BCELoss()(output, targetTensor.view(-1, 2))
         loss.backward()
         training_loss_sum += loss.item()
         optim.step()
@@ -113,7 +96,7 @@ for epoch in tqdm(range(EPOCH)):
             # 'testing_loss': testing_loss_sum / len(testing_data),
             'training_loss': training_loss_sum / len(training_data),
             'optimizer': optimizer.state_dict()
-        }, f'checkpoint/bert-LanGen-epoch{epoch + 1}.pt')
+        }, f'checkpoint/bert-discriminator-epoch{epoch + 1}.pt')
 
         torch.save({
             'epoch': epoch + 1,
@@ -121,7 +104,7 @@ for epoch in tqdm(range(EPOCH)):
             # 'testing_loss': testing_loss_sum / len(testing_data),
             'training_loss': training_loss_sum / len(training_data),
             'optimizer': optimizer.state_dict()
-        }, f'checkpoint/bert-LanGen-last.pt')
+        }, f'checkpoint/bert-discriminator-last.pt')
 
     log = f'epoch = {epoch + 1}, training_loss = {training_loss_sum / len(training_data)}'
     training_losses.append(training_loss_sum / len(training_data))
@@ -134,6 +117,6 @@ for epoch in tqdm(range(EPOCH)):
         vis.line(X=list(range(len(learning_curve_training))), Y=learning_curve_training, win='Learning Curve', name='learning_curve_training')
         vis.line(X=list(range(len(learning_curve_testing))), Y=learning_curve_testing, win='Learning Curve', update='append', name='learning_curve_testing')
 
-    with open('log.txt', 'a+') as LOG:
+    with open('log-discriminator.txt', 'a+') as LOG:
         LOG.write(log + '\n')
     tqdm.write(log)

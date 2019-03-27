@@ -11,7 +11,7 @@ class LanGen(nn.Module):
         super(LanGen, self).__init__()
         self.model = BertModel.from_pretrained(MODEL_PATH)
         weight = torch.FloatTensor(pretrained_vec)
-        self.model.embeddings.word_embeddings = nn.Embedding.from_pretrained(embeddings=weight, freeze=False)
+        self.model.embeddings.word_embeddings = nn.Embedding.from_pretrained(embeddings=weight, freeze=True)
         self.model.encoder.layer = self.model.encoder.layer[:3]
         self.model.eval()
         self.adaptive_softmax = nn.AdaptiveLogSoftmaxWithLoss(hidden_size, len(vocab), cutoffs=[994])
@@ -19,6 +19,24 @@ class LanGen(nn.Module):
     def forward(self, x):
         encoder_layers, _ = self.model(x)
         out = self.adaptive_softmax.log_prob(encoder_layers[-1].view(-1, 768))
+        return out, encoder_layers
+
+class Discriminator(nn.Module):
+    def __init__(self, pretrained_vec, hidden_size):
+        super(Discriminator, self).__init__()
+        self.model = BertModel.from_pretrained(MODEL_PATH)
+        weight = torch.FloatTensor(pretrained_vec)
+        self.model.embeddings.word_embeddings = nn.Embedding.from_pretrained(embeddings=weight, freeze=True)
+        self.model.encoder.layer = self.model.encoder.layer[:3]
+        self.model.eval()
+        self.output_layer = nn.Linear(hidden_size, 2)
+        self.sigmoid = nn.Sigmoid()
+    
+    def forward(self, x):
+        encoder_layers, _ = self.model(x)
+        out = self.output_layer(encoder_layers[-1].view(-1, 768))
+        out = self.sigmoid(out)
+        out = torch.narrow(out, 0, 0, 1)
         return out, encoder_layers
 
 class LabelSmoothing(nn.Module):
