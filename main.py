@@ -16,7 +16,7 @@ jieba.load_userdict('bert-model/dict-traditional.txt')
 jieba.suggest_freq('<newline>', True)
 
 # Load vocabularies
-word2vec = FastText.load_fasttext_format('bert-model/wordvec-large')
+word2vec = FastText.load_fasttext_format('bert-model/wordvec-large-new.dim768')
 vocab = {}
 vec = []
 with open('bert-model/TF.csv') as TF:
@@ -43,7 +43,7 @@ data = []
 print('Tokenization...')
 with open('pair.csv') as PAIR:
     for line in tqdm(PAIR):
-        [text, summary] = line.split(',')
+        [text, summary, _] = line.split(',')
         texts = []
         summaries = []
         paras = text.split('<newline>')

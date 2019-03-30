@@ -7,4 +7,5 @@ pair-lcstcs100000+origin.csv
 pair-lcstcs.csv
 pair+lcstcs*.csv
 __pycache__/
-wordvec-large.*.bin
+wordvec-large*
+lcstcs.csv

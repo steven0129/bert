@@ -1,10 +1,8 @@
 import jieba
-import random
 import sys
 from tqdm import tqdm
 from collections import Counter
 
-random.seed(0)
 jieba.load_userdict('bert-model/dict-traditional.txt')
 jieba.suggest_freq('<newline>', True)
 hashTable = {}
@@ -46,8 +44,7 @@ with open('pair.csv') as PAIR:
             TF.write(f'{text},{count}\n')
 
     with open('bert-model/classes.txt', 'w') as CLASS:
-        for text in tqdm(classes):
-            CLASS.write(f'{text}')
+        CLASS.write(f'{",".join(classes)}')
 
 print('前處理FastText...')
 with open('pair+lcstcs.csv') as PAIR:
