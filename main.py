@@ -12,7 +12,6 @@ from torch.autograd import Variable
 from torch import nn
 from pytorch_pretrained_bert import BertForSequenceClassification, BertConfig
 
-random.seed(0)
 vis = visdom.Visdom()
 EPOCH = 1000
 jieba.load_userdict('bert-model/dict-traditional.txt')
@@ -46,6 +45,8 @@ gan_loss = GANLoss()
 gan_loss.cuda()
 criterion = nn.BCELoss()
 criterion.cuda()
+G_STEP = 1
+D_STEP = 10
 SAVE_EVERY = 50
 PENALTY_EPOCH = -1
 DRAW_LEARNING_CURVE = False
@@ -100,7 +101,7 @@ for epoch in tqdm(range(EPOCH)):
         # Discriminator Training
         optimizer_d.zero_grad()
 
-        for _ in range(10):
+        for _ in range(D_STEP):
             random.shuffle(idx_summaries)
             inputTensor = torch.LongTensor([idx_summaries]).cuda()
             noise, _ = model(inputTensor)
@@ -119,7 +120,7 @@ for epoch in tqdm(range(EPOCH)):
         # Generator Training
         optimizer.zero_grad()
 
-        for _ in range(10):
+        for _ in range(G_STEP):
             random.shuffle(idx_summaries)
             inputTensor = torch.LongTensor([idx_summaries]).cuda()
             targetTensor = torch.LongTensor(idx_texts).cuda()
@@ -131,6 +132,8 @@ for epoch in tqdm(range(EPOCH)):
             g_loss.backward()
 
         optimizer.step()
+
+        tqdm.write(f'g_loss_sum = {g_loss_sum / (index + 1)}, d_loss_sum = {d_loss_sum / (index + 1)}')
 
         # if (epoch + 1) % SAVE_EVERY == 0 and DRAW_LEARNING_CURVE:
         #     learning_curve_training.append(training_loss_sum / (index + 1))
@@ -154,7 +157,7 @@ for epoch in tqdm(range(EPOCH)):
             'epoch': epoch + 1,
             'state': model.state_dict(),
             # 'testing_loss': testing_loss_sum / len(testing_data),
-            'training_loss': training_loss_sum / len(training_data),
+            'training_loss': g_loss_sum / len(training_data),
             'optimizer': optimizer.state_dict()
         }, f'checkpoint/bert-LanGen-epoch{epoch + 1}.pt')
 
@@ -162,34 +165,34 @@ for epoch in tqdm(range(EPOCH)):
             'epoch': epoch + 1,
             'state': model.state_dict(),
             # 'testing_loss': testing_loss_sum / len(testing_data),
-            'training_loss': training_loss_sum / len(training_data),
+            'training_loss': g_loss_sum / len(training_data),
             'optimizer': optimizer.state_dict()
         }, f'checkpoint/bert-LanGen-last.pt')
 
         torch.save({
             'epoch': epoch + 1,
             'state': d_net.state_dict(),
-            'd_loss': d_loss_sum,
-            'g_loss': g_loss_sum,
+            'd_loss': d_loss_sum / len(training_data),
+            'g_loss': g_loss_sum / len(training_data),
             'optimizer_d': optimizer_d.state_dict()
         }, f'checkpoint/bert-Discriminator-epoch{epoch + 1}.pt')
 
         torch.save({
             'epoch': epoch + 1,
             'state': d_net.state_dict(),
-            'd_loss': d_loss_sum,
-            'g_loss': g_loss_sum,
+            'd_loss': d_loss_sum / len(training_data),
+            'g_loss': g_loss_sum / len(training_data),
             'optimizer_d': optimizer_d.state_dict()
         }, f'checkpoint/bert-Discriminator-last.pt')
 
-    log = f'epoch = {epoch + 1}, training_loss = {training_loss_sum / len(training_data)}'
-    training_losses.append(training_loss_sum / len(training_data))
-    g_losses.append(g_loss_sum)
-    d_losses.append(d_loss_sum)
+    # log = f'epoch = {epoch + 1}, training_loss = {training_loss_sum / len(training_data)}'
+    log = f'epoch = {epoch + 1}, g_loss = {g_loss_sum}, d_loss = {d_loss_sum}'
+    g_losses.append(g_loss_sum / len(training_data))
+    d_losses.append(d_loss_sum / len(training_data))
     # testing_losses.append(testing_loss_sum / len(testing_data))
     
     vis.text('<b>LOG</b><br>' + log, win='log')
-    vis.line(X=list(range(len(training_losses))), Y=training_losses, win='loss', name='training_loss')
+    # vis.line(X=list(range(len(training_losses))), Y=training_losses, win='loss', name='training_loss')
     # vis.line(X=list(range(len(testing_losses))), Y=testing_losses, win='loss', update='append', name='testing_loss')
     vis.line(X=list(range(len(d_losses))), Y=d_losses, win='gan_loss', name='d_loss')
     vis.line(X=list(range(len(g_losses))), Y=g_losses, win='gan_loss', update='append', name='g_loss')

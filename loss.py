@@ -34,6 +34,6 @@ class GANLoss(nn.Module):
         if prob.is_cuda:
             one_hot = one_hot.cuda()
         loss = torch.masked_select(prob, one_hot)
-        loss = loss * reward.float()
+        loss = loss * (reward.float() + 1e-6)
         loss =  -torch.sum(loss)
         return loss
