@@ -37,7 +37,7 @@ model.cuda()
 d_net = BertForSequenceClassification(BertConfig(vocab_size_or_config_json_file='bert-model/bert_config.json'), 2)
 # d_net = modeling.TextCNN(embedding_dimension=len(vocab))
 d_net.cuda()
-optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 optimizer_d = torch.optim.SGD(model.parameters(), lr=0.01)
 label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
 label_smoothing.cuda()
@@ -46,7 +46,7 @@ gan_loss.cuda()
 criterion = nn.BCELoss()
 criterion.cuda()
 G_STEP = 1
-D_STEP = 10
+D_STEP = 1
 SAVE_EVERY = 50
 PENALTY_EPOCH = -1
 DRAW_LEARNING_CURVE = False
@@ -112,7 +112,7 @@ for epoch in tqdm(range(EPOCH)):
         inputTensor = torch.LongTensor([idx_texts]).cuda()
         d_loss = d_net(inputTensor, labels=REAL)
         d_loss_sum += d_loss.item()
-        d_loss_sum = d_loss_sum / 101
+        d_loss_sum = d_loss_sum
         d_loss.backward()
         
         optimizer_d.step()
@@ -128,12 +128,12 @@ for epoch in tqdm(range(EPOCH)):
             output = d_net(torch.unsqueeze(torch.argmax(noise, dim=1), 0).detach()) # Judge noise to REAL
             rewards = torch.argmax(output, dim=1)
             g_loss = gan_loss(noise, targetTensor, rewards)
-            g_loss_sum += g_loss.item() / 100
+            g_loss_sum += g_loss.item()
             g_loss.backward()
 
         optimizer.step()
 
-        tqdm.write(f'g_loss_sum = {g_loss_sum / (index + 1)}, d_loss_sum = {d_loss_sum / (index + 1)}')
+        tqdm.write(f'g_loss_sum = {g_loss_sum / ((index + 1) * G_STEP)}, d_loss_sum = {d_loss_sum / ((index + 1) * (D_STEP + 1))}')
 
         # if (epoch + 1) % SAVE_EVERY == 0 and DRAW_LEARNING_CURVE:
         #     learning_curve_training.append(training_loss_sum / (index + 1))
@@ -157,7 +157,7 @@ for epoch in tqdm(range(EPOCH)):
             'epoch': epoch + 1,
             'state': model.state_dict(),
             # 'testing_loss': testing_loss_sum / len(testing_data),
-            'training_loss': g_loss_sum / len(training_data),
+            'training_loss': g_loss_sum / (len(training_data) * G_STEP),
             'optimizer': optimizer.state_dict()
         }, f'checkpoint/bert-LanGen-epoch{epoch + 1}.pt')
 
@@ -165,30 +165,30 @@ for epoch in tqdm(range(EPOCH)):
             'epoch': epoch + 1,
             'state': model.state_dict(),
             # 'testing_loss': testing_loss_sum / len(testing_data),
-            'training_loss': g_loss_sum / len(training_data),
+            'training_loss': g_loss_sum / (len(training_data) * (D_STEP + 1)),
             'optimizer': optimizer.state_dict()
         }, f'checkpoint/bert-LanGen-last.pt')
 
         torch.save({
             'epoch': epoch + 1,
             'state': d_net.state_dict(),
-            'd_loss': d_loss_sum / len(training_data),
-            'g_loss': g_loss_sum / len(training_data),
+            'd_loss': d_loss_sum / (len(training_data) * (D_STEP + 1)),
+            'g_loss': g_loss_sum / (len(training_data) * G_STEP),
             'optimizer_d': optimizer_d.state_dict()
         }, f'checkpoint/bert-Discriminator-epoch{epoch + 1}.pt')
 
         torch.save({
             'epoch': epoch + 1,
             'state': d_net.state_dict(),
-            'd_loss': d_loss_sum / len(training_data),
-            'g_loss': g_loss_sum / len(training_data),
+            'd_loss': d_loss_sum / (len(training_data) * (D_STEP + 1)),
+            'g_loss': g_loss_sum / (len(training_data) * G_STEP),
             'optimizer_d': optimizer_d.state_dict()
         }, f'checkpoint/bert-Discriminator-last.pt')
 
     # log = f'epoch = {epoch + 1}, training_loss = {training_loss_sum / len(training_data)}'
-    log = f'epoch = {epoch + 1}, g_loss = {g_loss_sum}, d_loss = {d_loss_sum}'
-    g_losses.append(g_loss_sum / len(training_data))
-    d_losses.append(d_loss_sum / len(training_data))
+    log = f'epoch = {epoch + 1}, g_loss = {g_loss_sum / (len(training_data) * G_STEP)}, d_loss = {d_loss_sum / (len(training_data) * (D_STEP + 1))}'
+    g_losses.append(g_loss_sum / (len(training_data) * G_STEP))
+    d_losses.append(d_loss_sum / (len(training_data) * (D_STEP + 1)))
     # testing_losses.append(testing_loss_sum / len(testing_data))
     
     vis.text('<b>LOG</b><br>' + log, win='log')
