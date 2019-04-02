@@ -11,7 +11,9 @@ from gensim.models.fasttext import FastText
 from torch.autograd import Variable
 from torch import nn
 from pytorch_pretrained_bert import BertForSequenceClassification, BertConfig
+from pytorch_pretrained_bert.optimization import BertAdam
 
+random.seed(0)
 vis = visdom.Visdom()
 EPOCH = 1000
 jieba.load_userdict('bert-model/dict-traditional.txt')
@@ -34,11 +36,10 @@ del word2vec
 model = modeling.LanGen(vocab, vec, hidden_size=768)
 model.load_state_dict(torch.load('bert-generator-base.pt')['state'])
 model.cuda()
-d_net = BertForSequenceClassification(BertConfig(vocab_size_or_config_json_file='bert-model/bert_config.json'), 2)
-# d_net = modeling.TextCNN(embedding_dimension=len(vocab))
+d_net = modeling.LanClassify(vocab, vec, hidden_size=768, num_labels=2)
 d_net.cuda()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-optimizer_d = torch.optim.SGD(model.parameters(), lr=0.01)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+optimizer_d = BertAdam(model.parameters(), lr=0.01)
 label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
 label_smoothing.cuda()
 gan_loss = GANLoss()
@@ -46,7 +47,8 @@ gan_loss.cuda()
 criterion = nn.BCELoss()
 criterion.cuda()
 G_STEP = 1
-D_STEP = 1
+D_STEP = 3
+D_PRE = 200
 SAVE_EVERY = 50
 PENALTY_EPOCH = -1
 DRAW_LEARNING_CURVE = False
@@ -84,9 +86,56 @@ training_data = data[:round(len(data))]
 testing_data = []
 training_losses = []
 testing_losses = []
+d_losses_pretrained = []
+d_accuracy_pretrained = []
 d_losses = []
 g_losses = []
 
+# Pretrain Discriminator
+for epoch in tqdm(range(D_PRE)):
+    REAL = torch.cuda.LongTensor([1])
+    FAKE = torch.cuda.LongTensor([0])
+    d_loss_sum = 0.0
+    d_correct = 0
+
+    for index, (idx_texts, idx_summaries) in enumerate(tqdm(training_data)):
+        optimizer_d.zero_grad()
+
+        inputTensor = torch.LongTensor([idx_texts]).cuda()
+        out = d_net(inputTensor)
+        d_correct += (torch.argmax(out, dim=1) == 1).sum().item()
+        loss_fct = nn.CrossEntropyLoss()
+        d_loss = loss_fct(out.view(-1, d_net.num_labels), REAL.view(-1))
+        d_loss_sum += d_loss.item()
+        d_loss.backward()
+
+        random.shuffle(idx_texts)
+
+        inputTensor = torch.LongTensor([idx_texts]).cuda()
+        out = d_net(inputTensor)
+        d_correct += (torch.argmax(out, dim=1) == 0).sum().item()
+        loss_fct = nn.CrossEntropyLoss()
+        d_loss = loss_fct(out.view(-1, d_net.num_labels), FAKE.view(-1))
+        d_loss_sum += d_loss.item()
+        d_loss.backward()
+
+        optimizer_d.step()
+
+        tqdm.write(f'd_loss_sum = {d_loss_sum / ((index + 1) * 2)}, accuracy = {d_correct / ((index + 1) * 2) * 100}%')
+
+    d_losses_pretrained.append(d_loss_sum / (len(training_data) * 2))
+    d_accuracy_pretrained.append(d_correct / (len(training_data) * 2))
+    vis.line(X=list(range(len(d_losses_pretrained))), Y=d_losses_pretrained, win='d_loss_pretrained', name='d_loss')
+    vis.line(X=list(range(len(d_accuracy_pretrained))), Y=d_accuracy_pretrained, win='d_loss_pretrained', update='append', name='d_accuracy')
+
+torch.save({
+    'epoch': epoch + 1,
+    'state': d_net.state_dict(),
+    'd_loss': d_loss_sum / (len(training_data) * 2),
+    'optimizer_d': optimizer_d.state_dict()
+}, f'checkpoint/bert-Discriminator-pretrained.pt')
+
+# Adversarial Training
 for epoch in tqdm(range(EPOCH)):
     REAL = torch.cuda.LongTensor([1])
     FAKE = torch.cuda.LongTensor([0])
@@ -112,7 +161,6 @@ for epoch in tqdm(range(EPOCH)):
         inputTensor = torch.LongTensor([idx_texts]).cuda()
         d_loss = d_net(inputTensor, labels=REAL)
         d_loss_sum += d_loss.item()
-        d_loss_sum = d_loss_sum
         d_loss.backward()
         
         optimizer_d.step()
@@ -165,7 +213,7 @@ for epoch in tqdm(range(EPOCH)):
             'epoch': epoch + 1,
             'state': model.state_dict(),
             # 'testing_loss': testing_loss_sum / len(testing_data),
-            'training_loss': g_loss_sum / (len(training_data) * (D_STEP + 1)),
+            'training_loss': g_loss_sum / (len(training_data) * G_STEP),
             'optimizer': optimizer.state_dict()
         }, f'checkpoint/bert-LanGen-last.pt')
 
