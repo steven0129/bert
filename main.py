@@ -39,16 +39,21 @@ model.cuda()
 d_net = modeling.TextCNNClassify(vocab, vec, num_labels=2)
 d_net.cuda()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-optimizer_d = torch.optim.RMSprop(model.parameters(), lr=0.1)
+optimizer_d = torch.optim.SGD(d_net.parameters(), lr=0.01)
+# optimizers = [
+#     torch.optim.SGD(d_net.parameters(), lr=0.01),
+#     torch.optim.SGD(d_net.parameters(), lr=0.01, momentum=0.9, nesterov=True),
+#     torch.optim.RMSprop(d_net.parameters(), lr=0.01),
+#     torch.optim.Adam(d_net.parameters(), lr=0.01)
+# ]
+
 label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
 label_smoothing.cuda()
 gan_loss = GANLoss()
 gan_loss.cuda()
-criterion = nn.BCELoss()
-criterion.cuda()
 G_STEP = 1
 D_STEP = 3
-D_PRE = 100
+D_PRE = 20
 SAVE_EVERY = 50
 PENALTY_EPOCH = -1
 DRAW_LEARNING_CURVE = False
@@ -87,8 +92,6 @@ testing_data = []
 random_data = []
 training_losses = []
 testing_losses = []
-d_losses_pretrained = []
-d_accuracy_pretrained = []
 d_losses = []
 g_losses = []
 
@@ -102,6 +105,10 @@ for _ in range(len(training_data)):
 d_data = training_data + random_data
 random.Random(0).shuffle(d_data)
 loss_fct = nn.CrossEntropyLoss()
+
+d_losses_pretrained = []
+d_accuracy_pretrained = []
+
 for epoch in tqdm(range(D_PRE)):
     REAL = torch.cuda.LongTensor([1])
     FAKE = torch.cuda.LongTensor([0])
@@ -132,8 +139,8 @@ for epoch in tqdm(range(D_PRE)):
 
     d_losses_pretrained.append(d_loss_sum / len(d_data))
     d_accuracy_pretrained.append(d_correct / len(d_data))
-    vis.line(X=list(range(len(d_losses_pretrained))), Y=d_losses_pretrained, win='d_loss_pretrained', name='d_loss')
-    vis.line(X=list(range(len(d_accuracy_pretrained))), Y=d_accuracy_pretrained, win='d_loss_pretrained', update='append', name='d_accuracy')
+    vis.line(X=list(range(len(d_losses_pretrained))), Y=d_losses_pretrained, win='d_loss_pretrained', name=f'd_loss')
+    vis.line(X=list(range(len(d_accuracy_pretrained))), Y=d_accuracy_pretrained, win='d_accuracy_pretrained', name=f'd_accuracy')
 
 torch.save({
     'epoch': epoch + 1,
@@ -141,8 +148,6 @@ torch.save({
     'd_loss': d_loss_sum / (len(training_data) * 2),
     'optimizer_d': optimizer_d.state_dict()
 }, f'checkpoint/bert-Discriminator-pretrained.pt')
-
-sys.exit()
 
 # Adversarial Training
 for epoch in tqdm(range(EPOCH)):

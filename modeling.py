@@ -66,7 +66,7 @@ class TextCNNClassify(nn.Module):
         self.linear = nn.Linear(len(filter_sizes) * filter_num, num_labels)
         self.softmax = nn.Softmax()
 
-    def forward(self, x):
+    def forward(self, x, labels=None):
         x = self.embeddings(x)
         x = x.unsqueeze(1)
         x = [F.relu(conv(x)).squeeze(3) for conv in self.convs]
@@ -75,7 +75,13 @@ class TextCNNClassify(nn.Module):
         x = self.dropout(x)
         x = self.linear(x)
         logits = self.softmax(x)
-        return logits
+        
+        if labels is not None:
+            loss_fct = nn.CrossEntropyLoss()
+            loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            return loss
+        else:
+            return logits
 
 class LabelSmoothing(nn.Module):
     "Implement label smoothing."
