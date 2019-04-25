@@ -36,10 +36,10 @@ del word2vec
 model = modeling.LanGen(vocab, vec, hidden_size=768)
 model.load_state_dict(torch.load('bert-generator-base.pt')['state'])
 model.cuda()
-d_net = modeling.LanClassify(vocab, vec, hidden_size=768, num_labels=2)
+d_net = modeling.TextCNNClassify(vocab, vec, num_labels=2)
 d_net.cuda()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-optimizer_d = BertAdam(model.parameters(), lr=0.01)
+optimizer_d = torch.optim.RMSprop(model.parameters(), lr=0.1)
 label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
 label_smoothing.cuda()
 gan_loss = GANLoss()
@@ -48,7 +48,7 @@ criterion = nn.BCELoss()
 criterion.cuda()
 G_STEP = 1
 D_STEP = 3
-D_PRE = 200
+D_PRE = 100
 SAVE_EVERY = 50
 PENALTY_EPOCH = -1
 DRAW_LEARNING_CURVE = False
@@ -84,6 +84,7 @@ with open('pair.csv') as PAIR:
 # Training
 training_data = data[:round(len(data))]
 testing_data = []
+random_data = []
 training_losses = []
 testing_losses = []
 d_losses_pretrained = []
@@ -91,40 +92,46 @@ d_accuracy_pretrained = []
 d_losses = []
 g_losses = []
 
+# Prepare random data
+avg_len = 512
+for _ in range(len(training_data)):
+    randomStr = list(map(lambda x: random.randint(0, x - 1), [len(vocab)] * avg_len))
+    random_data.append((randomStr, []))
+
 # Pretrain Discriminator
+d_data = training_data + random_data
+random.Random(0).shuffle(d_data)
+loss_fct = nn.CrossEntropyLoss()
 for epoch in tqdm(range(D_PRE)):
     REAL = torch.cuda.LongTensor([1])
     FAKE = torch.cuda.LongTensor([0])
     d_loss_sum = 0.0
     d_correct = 0
 
-    for index, (idx_texts, idx_summaries) in enumerate(tqdm(training_data)):
-        optimizer_d.zero_grad()
+    for index, (idx_texts, idx_summaries) in enumerate(tqdm(d_data)):
+        if len(idx_summaries) == 0:
+            optimizer_d.zero_grad()
+            inputTensor = torch.LongTensor([idx_texts]).cuda()
+            out = d_net(inputTensor)
+            d_correct += (torch.argmax(out.view(-1, d_net.num_labels), dim=1) == 0).sum().item()
+            d_loss = loss_fct(out.view(-1, d_net.num_labels), FAKE.view(-1))
+            d_loss_sum += d_loss.item()
+            d_loss.backward()
+            optimizer_d.step()
+        else:
+            optimizer_d.zero_grad()
+            inputTensor = torch.LongTensor([idx_texts]).cuda()
+            out = d_net(inputTensor)
+            d_correct += (torch.argmax(out.view(-1, d_net.num_labels), dim=1) == 1).sum().item()
+            d_loss = loss_fct(out.view(-1, d_net.num_labels), REAL.view(-1))
+            d_loss_sum += d_loss.item()
+            d_loss.backward()
+            optimizer_d.step()
+        
+        tqdm.write(f'd_loss_sum = {d_loss_sum / (index + 1)}, accuracy = {d_correct / (index + 1) * 100}%')
 
-        inputTensor = torch.LongTensor([idx_texts]).cuda()
-        out = d_net(inputTensor)
-        d_correct += (torch.argmax(out, dim=1) == 1).sum().item()
-        loss_fct = nn.CrossEntropyLoss()
-        d_loss = loss_fct(out.view(-1, d_net.num_labels), REAL.view(-1))
-        d_loss_sum += d_loss.item()
-        d_loss.backward()
-
-        random.shuffle(idx_texts)
-
-        inputTensor = torch.LongTensor([idx_texts]).cuda()
-        out = d_net(inputTensor)
-        d_correct += (torch.argmax(out, dim=1) == 0).sum().item()
-        loss_fct = nn.CrossEntropyLoss()
-        d_loss = loss_fct(out.view(-1, d_net.num_labels), FAKE.view(-1))
-        d_loss_sum += d_loss.item()
-        d_loss.backward()
-
-        optimizer_d.step()
-
-        tqdm.write(f'd_loss_sum = {d_loss_sum / ((index + 1) * 2)}, accuracy = {d_correct / ((index + 1) * 2) * 100}%')
-
-    d_losses_pretrained.append(d_loss_sum / (len(training_data) * 2))
-    d_accuracy_pretrained.append(d_correct / (len(training_data) * 2))
+    d_losses_pretrained.append(d_loss_sum / len(d_data))
+    d_accuracy_pretrained.append(d_correct / len(d_data))
     vis.line(X=list(range(len(d_losses_pretrained))), Y=d_losses_pretrained, win='d_loss_pretrained', name='d_loss')
     vis.line(X=list(range(len(d_accuracy_pretrained))), Y=d_accuracy_pretrained, win='d_loss_pretrained', update='append', name='d_accuracy')
 
@@ -134,6 +141,8 @@ torch.save({
     'd_loss': d_loss_sum / (len(training_data) * 2),
     'optimizer_d': optimizer_d.state_dict()
 }, f'checkpoint/bert-Discriminator-pretrained.pt')
+
+sys.exit()
 
 # Adversarial Training
 for epoch in tqdm(range(EPOCH)):
@@ -148,28 +157,27 @@ for epoch in tqdm(range(EPOCH)):
 
     for index, (idx_texts, idx_summaries) in enumerate(tqdm(training_data)):
         # Discriminator Training
-        optimizer_d.zero_grad()
-
-        for _ in range(D_STEP):
-            random.shuffle(idx_summaries)
+        for d_step in range(D_STEP):
+            optimizer_d.zero_grad()
+            random.Random(d_step).shuffle(idx_summaries)
             inputTensor = torch.LongTensor([idx_summaries]).cuda()
             noise, _ = model(inputTensor)
             d_loss = d_net(torch.unsqueeze(torch.argmax(noise, dim=1), 0).detach(), labels=FAKE) # Split generator from graph
             d_loss_sum += d_loss.item()
             d_loss.backward()
+            optimizer_d.step()
 
+        optimizer_d.zero_grad()
         inputTensor = torch.LongTensor([idx_texts]).cuda()
         d_loss = d_net(inputTensor, labels=REAL)
         d_loss_sum += d_loss.item()
         d_loss.backward()
-        
         optimizer_d.step()
 
         # Generator Training
-        optimizer.zero_grad()
-
-        for _ in range(G_STEP):
-            random.shuffle(idx_summaries)
+        for g_step in range(G_STEP):
+            optimizer.zero_grad()
+            random.Random(g_step).shuffle(idx_summaries)
             inputTensor = torch.LongTensor([idx_summaries]).cuda()
             targetTensor = torch.LongTensor(idx_texts).cuda()
             noise, _ = model(inputTensor)
@@ -178,8 +186,7 @@ for epoch in tqdm(range(EPOCH)):
             g_loss = gan_loss(noise, targetTensor, rewards)
             g_loss_sum += g_loss.item()
             g_loss.backward()
-
-        optimizer.step()
+            optimizer.step()
 
         tqdm.write(f'g_loss_sum = {g_loss_sum / ((index + 1) * G_STEP)}, d_loss_sum = {d_loss_sum / ((index + 1) * (D_STEP + 1))}')
 

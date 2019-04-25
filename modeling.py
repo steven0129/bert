@@ -22,21 +22,23 @@ class LanGen(nn.Module):
         out = self.adaptive_softmax.log_prob(encoder_layers[-1].view(-1, 768))
         return out, encoder_layers
 
-class LanClassify(nn.Module):
-    def __init__(self, vocab, pretrained_vec, hidden_size, num_labels, dropout=0.1):
-        super(LanClassify, self).__init__()
+class BertClassify(nn.Module):
+    def __init__(self, vocab, pretrained_vec, num_labels, hidden_size=768, dropout=0.1):
+        super(BertClassify, self).__init__()
         self.model = BertModel.from_pretrained(MODEL_PATH)
         weight = torch.FloatTensor(pretrained_vec)
         self.model.embeddings.word_embeddings = nn.Embedding.from_pretrained(embeddings=weight, freeze=True)
         self.model.eval()
         self.num_labels = num_labels
         self.classifier = nn.Linear(hidden_size, num_labels)
+        self.softmax = nn.Softmax()
         self.dropout = nn.Dropout(dropout)
     
     def forward(self, x, labels=None):
         _, pooled_output = self.model(x, output_all_encoded_layers=False)
         pooled_output = self.dropout(pooled_output)
-        logits = self.classifier(pooled_output)
+        x = self.classifier(pooled_output)
+        logits = self.softmax(x)
         
         if labels is not None:
             loss_fct = nn.CrossEntropyLoss()
@@ -44,6 +46,36 @@ class LanClassify(nn.Module):
             return loss
         else:
             return logits
+
+class TextCNNClassify(nn.Module):
+    def __init__(self, vocab, pretrained_vec, num_labels, hidden_size=100, dropout=0.1):
+        super(TextCNNClassify, self).__init__()
+        weight = torch.FloatTensor(pretrained_vec)
+        channel_num = 1
+        filter_num = 100
+        filter_sizes = [3, 4, 5]
+        embedding_dim = 768
+
+        self.embeddings = nn.Embedding.from_pretrained(embeddings=weight, freeze=True)
+        self.num_labels = num_labels
+        self.convs = nn.ModuleList(
+            [nn.Conv2d(channel_num, filter_num, (size, embedding_dim)) for size in filter_sizes]
+        )
+
+        self.dropout = nn.Dropout(dropout)
+        self.linear = nn.Linear(len(filter_sizes) * filter_num, num_labels)
+        self.softmax = nn.Softmax()
+
+    def forward(self, x):
+        x = self.embeddings(x)
+        x = x.unsqueeze(1)
+        x = [F.relu(conv(x)).squeeze(3) for conv in self.convs]
+        x = [F.max_pool1d(item, item.size(2)).squeeze(2) for item in x]
+        x = torch.cat(x, 1)
+        x = self.dropout(x)
+        x = self.linear(x)
+        logits = self.softmax(x)
+        return logits
 
 class LabelSmoothing(nn.Module):
     "Implement label smoothing."
