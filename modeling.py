@@ -2,10 +2,23 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from softmax import AdaptiveDSoftmaxWithLoss
-from pytorch_pretrained_bert import BertModel
+from pytorch_pretrained_bert import BertModel, BertModelNoEmbed, BertConfig
 from torch.autograd import Variable
 
 MODEL_PATH = 'bert-model'
+
+class LanGenNoEmbed(nn.Module):
+    def __init__(self, vocab, hidden_size, num_layer):
+        super(LanGenNoEmbed, self).__init__()
+        self.model = BertModelNoEmbed(config=BertConfig(vocab_size_or_config_json_file=len(vocab), hidden_size=hidden_size, num_hidden_layers=num_layer, num_attention_heads=8, intermediate_size=3072, type_vocab_size=2, hidden_dropout_prob=0.1, attention_probs_dropout_prob=0.1))
+        self.model.encoder.layer = self.model.encoder.layer[:3]
+        self.model.eval()
+        self.adaptive_softmax = nn.AdaptiveLogSoftmaxWithLoss(hidden_size, len(vocab), cutoffs=[994])
+
+    def forward(self, x):
+        encoder_layers, _ = self.model(x)
+        out = self.adaptive_softmax.log_prob(encoder_layers[-1].view(-1, 1024))
+        return out, encoder_layers
 
 class LanGen(nn.Module):
     def __init__(self, vocab, pretrained_vec, hidden_size):
