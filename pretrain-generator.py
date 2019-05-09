@@ -104,12 +104,12 @@ for epoch in tqdm(range(EPOCH)):
                     v2 = param.data.cuda()
                     summation += torch.mean(cosSim(v1, v2))
 
-                disagreement +=  -summation / param.data.size(0)
+                disagreement +=  summation / param.data.size(0)
                 disagreement_idx += 1
         
         disagreement_avg = disagreement / disagreement_idx
         tqdm.write(f'Average disagreement: {str(disagreement_avg.item())}')
-        loss_penalty = loss + 10 * disagreement_avg
+        loss_penalty = loss + disagreement_avg
         loss_penalty.backward()
         training_loss_sum += loss.item()
         optimizer.step()
