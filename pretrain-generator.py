@@ -102,14 +102,14 @@ for epoch in tqdm(range(EPOCH)):
                     v1 = v1.cuda()
                     v1 = v1.expand(param.data.size(0), param.data.size(1))
                     v2 = param.data.cuda()
-                    summation += torch.mean(cosSim(v1, v2))
+                    summation += torch.mean(0.5 * (1 + cosSim(v1, v2)))
 
                 disagreement +=  summation / param.data.size(0)
                 disagreement_idx += 1
         
         disagreement_avg = disagreement / disagreement_idx
         tqdm.write(f'Average disagreement: {str(disagreement_avg.item())}')
-        loss_penalty = loss + disagreement_avg
+        loss_penalty = loss * disagreement_avg
         loss_penalty.backward()
         training_loss_sum += loss.item()
         optimizer.step()
@@ -151,4 +151,3 @@ for epoch in tqdm(range(EPOCH)):
 
     with open('log.txt', 'a+') as LOG:
         LOG.write(log + '\n')
-tqdm.write(log)
