@@ -112,11 +112,12 @@ for epoch in tqdm(range(EPOCH)):
         training_loss_sum += loss.item()
         optimizer.step()
 
-    for idx_texts, wordvec_summaries in tqdm(testing_data):
+    for idx_texts, wordvec_texts, wordvec_summaries in tqdm(testing_data):
         inputTensor = torch.from_numpy(wordvec_summaries).cuda()
-        targetTensor = torch.LongTensor(idx_texts).cuda()
-        output, _ = model(inputTensor.unsqueeze(0))
-        loss = label_smoothing(output, targetTensor)
+        tgtInputTensor = torch.from_numpy(wordvec_texts[:-1]).cuda()
+        tgtTensor = torch.LongTensor(idx_texts[1:]).cuda()
+        output = model(inputTensor.unsqueeze(0), tgtInputTensor.unsqueeze(0))
+        loss = label_smoothing(output, tgtTensor)
         testing_loss_sum += loss.item()
 
     if (epoch + 1) % SAVE_EVERY == 0:
