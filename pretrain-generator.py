@@ -20,22 +20,17 @@ embedder = Embedder('bert-model/elmo/')
 cosSim = nn.CosineSimilarity()
 
 # Load vocabularies
-# word2vec = FastText.load_fasttext_format('bert-model/wordvec-large-new.dim768')
 vocab = {}
 idx2vocab = {}
-# vec = []
 with open('bert-model/TF.csv') as TF:
     print('建構詞向量...')
     for idx, line in enumerate(tqdm(TF)):
         term = line.split(',')[0]
         vocab[term] = idx
         idx2vocab[idx] = term
-        # vec.append(word2vec[term])
-
-# del word2vec
 
 # BERT Model
-model = modeling.LanGenNoEmbed(vocab=vocab, hidden_size=1024, num_layer=3)
+model = modeling.TransformerNoEmbed(vocab=vocab, hidden_size=1024, enc_num_layer=3, dec_num_layer=3)
 model.cuda()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
@@ -66,12 +61,13 @@ with open('pair.csv') as PAIR:
         texts.append('<EOS>')
         summaries.insert(0, '<SOS>')
         summaries.append('<EOS>')
-        summaries.extend(['<PAD>'] * (len(texts) - len(summaries)))
+        # summaries.extend(['<PAD>'] * (len(texts) - len(summaries)))
         
         idx_texts = list(map(lambda x: vocab[x], texts[:512]))
+        wordvec_texts = embedder.sents2elmo([texts[:512]])[0]
         # idx_summaries = list(map(lambda x: vocab[x], summaries[:512]))
         wordvec_summaries = embedder.sents2elmo([summaries[:512]])[0]
-        data.append((idx_texts, wordvec_summaries))
+        data.append((idx_texts, wordvec_texts, wordvec_summaries))
 
 # Training
 random.Random(0).shuffle(data)
@@ -85,32 +81,34 @@ for epoch in tqdm(range(EPOCH)):
     training_loss_sum = 0.0
     testing_loss_sum = 0.0
     
-    for index, (idx_texts, wordvec_summaries) in enumerate(tqdm(training_data)):
+    for index, (idx_texts, wordvec_texts, wordvec_summaries) in enumerate(tqdm(training_data)):
         optimizer.zero_grad()
         inputTensor = torch.from_numpy(wordvec_summaries).cuda()
-        targetTensor = torch.LongTensor(idx_texts).cuda()
-        output, _ = model(inputTensor.unsqueeze(0))
-        loss = label_smoothing(output, targetTensor)
+        tgtInputTensor = torch.from_numpy(wordvec_texts[:-1]).cuda()
+        tgtTensor = torch.LongTensor(idx_texts[1:]).cuda()
+        output = model(inputTensor.unsqueeze(0), tgtInputTensor.unsqueeze(0))
+        loss = label_smoothing(output, tgtTensor)
 
         # Multi-head attention with disagreement regularization
-        disagreement = torch.zeros(1).cuda()
-        disagreement_idx = 0
-        for name, param in model.named_parameters():
-            if name.endswith('.attention.self.value.weight'):
-                summation = torch.zeros(1).cuda()
-                for v1 in param.data:
-                    v1 = v1.cuda()
-                    v1 = v1.expand(param.data.size(0), param.data.size(1))
-                    v2 = param.data.cuda()
-                    summation += torch.mean(0.5 * (1 + cosSim(v1, v2)))
+        # disagreement = torch.zeros(1).cuda()
+        # disagreement_idx = 0
+        # for name, param in model.named_parameters():
+        #     if name.endswith('.attention.self.value.weight'):
+        #         summation = torch.zeros(1).cuda()
+        #         for v1 in param.data:
+        #             v1 = v1.cuda()
+        #             v1 = v1.expand(param.data.size(0), param.data.size(1))
+        #             v2 = param.data.cuda()
+        #             summation += torch.mean(0.5 * (1 + cosSim(v1, v2)))
 
-                disagreement +=  summation / param.data.size(0)
-                disagreement_idx += 1
+        #         disagreement +=  summation / param.data.size(0)
+        #         disagreement_idx += 1
         
-        disagreement_avg = disagreement / disagreement_idx
-        tqdm.write(f'Average disagreement: {str(disagreement_avg.item())}')
-        loss_penalty = loss * disagreement_avg
-        loss_penalty.backward()
+        # disagreement_avg = disagreement / disagreement_idx
+        # tqdm.write(f'Average disagreement: {str(disagreement_avg.item())}')
+        # loss_penalty = loss * disagreement_avg
+        # loss_penalty.backward()
+        loss.backward()
         training_loss_sum += loss.item()
         optimizer.step()
 
