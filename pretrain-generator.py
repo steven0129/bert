@@ -32,7 +32,7 @@ with open('bert-model/TF.csv') as TF:
 # BERT Model
 model = modeling.TransformerNoEmbed(vocab=vocab, hidden_size=1024, enc_num_layer=3, dec_num_layer=3)
 model.cuda()
-optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
 label_smoothing.cuda()
 SAVE_EVERY = 50
@@ -61,11 +61,9 @@ with open('pair.csv') as PAIR:
         texts.append('<EOS>')
         summaries.insert(0, '<SOS>')
         summaries.append('<EOS>')
-        # summaries.extend(['<PAD>'] * (len(texts) - len(summaries)))
         
         idx_texts = list(map(lambda x: vocab[x], texts[:512]))
         wordvec_texts = embedder.sents2elmo([texts[:512]])[0]
-        # idx_summaries = list(map(lambda x: vocab[x], summaries[:512]))
         wordvec_summaries = embedder.sents2elmo([summaries[:512]])[0]
         data.append((idx_texts, wordvec_texts, wordvec_summaries))
 
@@ -88,26 +86,6 @@ for epoch in tqdm(range(EPOCH)):
         tgtTensor = torch.LongTensor(idx_texts[1:]).cuda()
         output = model(inputTensor.unsqueeze(0), tgtInputTensor.unsqueeze(0))
         loss = label_smoothing(output, tgtTensor)
-
-        # Multi-head attention with disagreement regularization
-        # disagreement = torch.zeros(1).cuda()
-        # disagreement_idx = 0
-        # for name, param in model.named_parameters():
-        #     if name.endswith('.attention.self.value.weight'):
-        #         summation = torch.zeros(1).cuda()
-        #         for v1 in param.data:
-        #             v1 = v1.cuda()
-        #             v1 = v1.expand(param.data.size(0), param.data.size(1))
-        #             v2 = param.data.cuda()
-        #             summation += torch.mean(0.5 * (1 + cosSim(v1, v2)))
-
-        #         disagreement +=  summation / param.data.size(0)
-        #         disagreement_idx += 1
-        
-        # disagreement_avg = disagreement / disagreement_idx
-        # tqdm.write(f'Average disagreement: {str(disagreement_avg.item())}')
-        # loss_penalty = loss * disagreement_avg
-        # loss_penalty.backward()
         loss.backward()
         training_loss_sum += loss.item()
         optimizer.step()
@@ -144,9 +122,6 @@ for epoch in tqdm(range(EPOCH)):
     vis.text('<b>LOG</b><br>' + log, win='log')
     vis.line(X=list(range(len(training_losses))), Y=training_losses, win='loss', name='training_loss')
     vis.line(X=list(range(len(testing_losses))), Y=testing_losses, win='loss', update='append', name='testing_loss')
-    # if (epoch + 1) % SAVE_EVERY == 0 and DRAW_LEARNING_CURVE:
-    #     vis.line(X=list(range(len(learning_curve_training))), Y=learning_curve_training, win='Learning Curve', name='learning_curve_training')
-    #     vis.line(X=list(range(len(learning_curve_testing))), Y=learning_curve_testing, win='Learning Curve', update='append', name='learning_curve_testing')
 
     with open('log.txt', 'a+') as LOG:
         LOG.write(log + '\n')
