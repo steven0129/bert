@@ -9,30 +9,34 @@ from tqdm import tqdm
 from gensim.models.fasttext import FastText
 from torch.autograd import Variable
 from torch import nn
-from elmoformanylangs import Embedder
+from pytorch_pretrained_bert import BertAdam
+from pytorch_pretrained_bert.optimization import WarmupLinearSchedule
 
 random.seed(0)
 vis = visdom.Visdom()
-EPOCH = 5000
+EPOCH = 1000
 jieba.load_userdict('bert-model/dict-traditional.txt')
 jieba.suggest_freq('<newline>', True)
-embedder = Embedder('bert-model/elmo/')
 cosSim = nn.CosineSimilarity()
 
 # Load vocabularies
+word2vec = FastText.load_fasttext_format('bert-model/wordvec-large.dim1024')
 vocab = {}
 idx2vocab = {}
+vec = []
 with open('bert-model/TF.csv') as TF:
     print('建構詞向量...')
     for idx, line in enumerate(tqdm(TF)):
         term = line.split(',')[0]
         vocab[term] = idx
         idx2vocab[idx] = term
+        vec.append(word2vec[term])
+
+del word2vec
 
 # BERT Model
 model = modeling.TransformerNoEmbed(vocab=vocab, hidden_size=1024, enc_num_layer=3, dec_num_layer=3)
 model.cuda()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
 label_smoothing.cuda()
 SAVE_EVERY = 50
@@ -62,15 +66,18 @@ with open('pair.csv') as PAIR:
         summaries.insert(0, '<SOS>')
         summaries.append('<EOS>')
         
-        idx_texts = list(map(lambda x: vocab[x], texts[:512]))
-        wordvec_texts = embedder.sents2elmo([texts[:512]])[0]
-        wordvec_summaries = embedder.sents2elmo([summaries[:512]])[0]
+        idx_texts = list(map(lambda x: vocab[x], texts[:1500]))
+        idx_summaries = list(map(lambda x: vocab[x], summaries[:512]))
+        wordvec_texts = list(map(lambda x: vec[x], idx_texts))
+        wordvec_summaries = list(map(lambda x: vec[x], idx_summaries))
+        
         data.append((idx_texts, wordvec_texts, wordvec_summaries))
 
 # Training
 random.Random(0).shuffle(data)
 training_data = data[:round(len(data) * 0.8)]
 testing_data = data[round(len(data) * 0.8):]
+optimizer = BertAdam(model.parameters(), lr=0.001, weight_decay=1e-5, schedule=WarmupLinearSchedule(warmup=0.1, t_total=EPOCH * len(training_data)))
 BATCH_SIZE = 1
 training_losses = []
 testing_losses = []
@@ -81,18 +88,20 @@ for epoch in tqdm(range(EPOCH)):
     
     for index, (idx_texts, wordvec_texts, wordvec_summaries) in enumerate(tqdm(training_data)):
         optimizer.zero_grad()
-        inputTensor = torch.from_numpy(wordvec_summaries).cuda()
-        tgtInputTensor = torch.from_numpy(wordvec_texts[:-1]).cuda()
+        
+        inputTensor = torch.FloatTensor(wordvec_summaries).cuda()
+        tgtInputTensor = torch.FloatTensor(wordvec_texts[:-1]).cuda()
         tgtTensor = torch.LongTensor(idx_texts[1:]).cuda()
         output = model(inputTensor.unsqueeze(0), tgtInputTensor.unsqueeze(0))
         loss = label_smoothing(output, tgtTensor)
-        loss.backward()
         training_loss_sum += loss.item()
+        loss.backward()
+
         optimizer.step()
 
     for idx_texts, wordvec_texts, wordvec_summaries in tqdm(testing_data):
-        inputTensor = torch.from_numpy(wordvec_summaries).cuda()
-        tgtInputTensor = torch.from_numpy(wordvec_texts[:-1]).cuda()
+        inputTensor = torch.FloatTensor(wordvec_summaries).cuda()
+        tgtInputTensor = torch.FloatTensor(wordvec_texts[:-1]).cuda()
         tgtTensor = torch.LongTensor(idx_texts[1:]).cuda()
         output = model(inputTensor.unsqueeze(0), tgtInputTensor.unsqueeze(0))
         loss = label_smoothing(output, tgtTensor)

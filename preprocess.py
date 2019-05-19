@@ -28,8 +28,8 @@ with open('pair.csv') as PAIR:
                 addKey(word)
             addKey('<newline>')
 
-        for i in range(len(text) - len(summary)):
-            addKey('<PAD>')
+        # for i in range(len(text) - len(summary)):
+        #     addKey('<PAD>')
 
         for word in jieba.cut(summary):
             addKey(word)
@@ -69,7 +69,7 @@ with open('pair+lcstcs.csv') as PAIR:
 
             OUT.write('<EOS> ')
 
-            for i in range(len(text) - len(summary)):
-                OUT.write('<PAD> ')
+            # for i in range(len(text) - len(summary)):
+            #     OUT.write('<PAD> ')
 
             OUT.write('\n')

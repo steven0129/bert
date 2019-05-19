@@ -5,7 +5,7 @@ import copy
 from torch import nn
 
 class PositionalEncoder(nn.Module):
-    def __init__(self, hidden_size, max_seq_len=512):
+    def __init__(self, hidden_size, max_seq_len=1500):
         super(PositionalEncoder, self).__init__()
         self.hidden_size = hidden_size
         pe = torch.zeros(max_seq_len, hidden_size)
