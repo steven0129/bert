@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+import numpy as np
 from torch import nn
 from softmax import AdaptiveDSoftmaxWithLoss
 from pytorch_pretrained_bert import BertModel, BertModelNoEmbed, BertConfig
@@ -18,9 +19,12 @@ class TransformerNoEmbed(nn.Module):
         self.adaptive_softmax = nn.AdaptiveLogSoftmaxWithLoss(hidden_size, len(vocab), cutoffs=[1000])
 
     def forward(self, x, tgt):
+        seq_len = tgt.size(1)
+        tgt_mask = np.triu(np.ones((1, seq_len, seq_len)), k=1).astype('uint8')
+        tgt_mask = (torch.from_numpy(tgt_mask) == 0).cuda()
         encoder_layers, _ = self.encoder(x)
         encoder_output = encoder_layers[-1]
-        dec_output = self.decoder(tgt, encoder_output)
+        dec_output = self.decoder(tgt, encoder_output, tgt_mask=tgt_mask)
         out = self.adaptive_softmax.log_prob(dec_output.view(-1, self.hidden_size))
         return out
 

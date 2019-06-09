@@ -14,7 +14,7 @@ from pytorch_pretrained_bert.optimization import WarmupLinearSchedule
 
 random.seed(0)
 vis = visdom.Visdom()
-EPOCH = 1000
+EPOCH = 2000
 jieba.load_userdict('bert-model/dict-traditional.txt')
 jieba.suggest_freq('<newline>', True)
 cosSim = nn.CosineSimilarity()
@@ -35,7 +35,7 @@ with open('bert-model/TF.csv') as TF:
 del word2vec
 
 # BERT Model
-model = modeling.TransformerNoEmbed(vocab=vocab, hidden_size=1024, enc_num_layer=3, dec_num_layer=3)
+model = modeling.TransformerNoEmbed(vocab=vocab, hidden_size=1024, enc_num_layer=3, dec_num_layer=6)
 model.cuda()
 label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
 label_smoothing.cuda()
@@ -77,7 +77,8 @@ with open('pair.csv') as PAIR:
 random.Random(0).shuffle(data)
 training_data = data[:round(len(data) * 0.8)]
 testing_data = data[round(len(data) * 0.8):]
-optimizer = BertAdam(model.parameters(), lr=0.001, weight_decay=1e-5, schedule=WarmupLinearSchedule(warmup=0.1, t_total=EPOCH * len(training_data)))
+#optimizer = BertAdam(model.parameters(), lr=0.001)
+optimizer = BertAdam(model.parameters(), lr=0.001, weight_decay=0.1, schedule=WarmupLinearSchedule(warmup=0.005, t_total=EPOCH * len(training_data)))
 BATCH_SIZE = 1
 training_losses = []
 testing_losses = []
