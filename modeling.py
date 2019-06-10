@@ -13,7 +13,6 @@ class TransformerNoEmbed(nn.Module):
     def __init__(self, vocab, hidden_size, enc_num_layer, dec_num_layer):
         super(TransformerNoEmbed, self).__init__()
         self.encoder = BertModelNoEmbed(config=BertConfig(vocab_size_or_config_json_file=len(vocab), hidden_size=hidden_size, num_hidden_layers=enc_num_layer, num_attention_heads=8, intermediate_size=3072, type_vocab_size=2, hidden_dropout_prob=0.1, attention_probs_dropout_prob=0.1))
-        self.encoder.eval()
         self.decoder = Decoder(hidden_size=hidden_size, num_layer=dec_num_layer, heads=8)
         self.hidden_size = hidden_size
         self.adaptive_softmax = nn.AdaptiveLogSoftmaxWithLoss(hidden_size, len(vocab), cutoffs=[1000])
@@ -27,6 +26,25 @@ class TransformerNoEmbed(nn.Module):
         dec_output = self.decoder(tgt, encoder_output, tgt_mask=tgt_mask)
         out = self.adaptive_softmax.log_prob(dec_output.view(-1, self.hidden_size))
         return out
+
+    def inference(self, x, vec, SOS=48, EOS=49):
+        max_len = 1024
+        encoder_layers, _ = self.encoder(x)
+        encoder_output = encoder_layers[-1]
+        tgt = [SOS]
+        
+        for i in tqdm(range(1500)):
+            seq_len = i+1
+            tgt_mask = np.triu(np.ones((1, seq_len, seq_len)), k=1).astype('uint8')
+            tgt_mask = (torch.from_numpy(tgt_mask) == 0).cuda()
+            tgt_wordvec = list(map(lambda x: vec[x], tgt))
+            dec_output = self.decoder(torch.cuda.FloatTensor([tgt_wordvec]), encoder_output, tgt_mask=tgt_mask)
+            predicted_output = self.adaptive_softmax.predict(dec_output.view(-1, self.hidden_size)).tolist()
+            next_word = predicted_output[-1]
+            tgt.append(next_word)
+            if next_word == EOS: break
+
+        return tgt
 
 class LanGenNoEmbed(nn.Module):
     def __init__(self, vocab, hidden_size, num_layer):
