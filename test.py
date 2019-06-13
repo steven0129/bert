@@ -4,8 +4,8 @@ import torch
 import random
 from tqdm import tqdm
 from gensim.models.fasttext import FastText
-
 text = '大理國無量山無量劍派的練武廳中，舉辦了五年一次的比武鬥劍大會，由無量劍的東、北、西三宗互相比試。此次是第九次大會。'
+#text = '司空玄為逼鍾靈交出解藥來歷，便讓段譽服下斷腸散，以此脅迫鍾靈。'
 jieba.load_userdict('bert-model/dict-traditional.txt')
 jieba.suggest_freq('<newline>', True)
 
@@ -37,9 +37,10 @@ print(f'Testing Loss: {checkpoint["testing_loss"]}')
 
 summary = text
 summary = list(jieba.cut(summary))
+random.shuffle(summary)
 summary.insert(0, '<SOS>')
 summary.append('<EOS>')
 wordvec_summaries = list(map(lambda x: vec[vocab[x]], summary))
-target = model.inference(torch.FloatTensor(wordvec_summaries).unsqueeze(0).cuda(), vec=vec)
+target = model.inference(torch.FloatTensor(wordvec_summaries).unsqueeze(0).cuda(), vec=vec, beam_size=None)
 result = ''.join(list(map(lambda x: id2vocab[x], target)))
 print(result)

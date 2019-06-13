@@ -6,6 +6,7 @@ from softmax import AdaptiveDSoftmaxWithLoss
 from pytorch_pretrained_bert import BertModel, BertModelNoEmbed, BertConfig
 from torch.autograd import Variable
 from decoder import Decoder
+from tqdm import tqdm
 
 MODEL_PATH = 'bert-model'
 
@@ -27,24 +28,51 @@ class TransformerNoEmbed(nn.Module):
         out = self.adaptive_softmax.log_prob(dec_output.view(-1, self.hidden_size))
         return out
 
-    def inference(self, x, vec, SOS=48, EOS=49):
-        max_len = 1024
+    def inference(self, x, vec, beam_size=None, SOS=48, EOS=49):
+        max_len = 100
         encoder_layers, _ = self.encoder(x)
         encoder_output = encoder_layers[-1]
-        tgt = [SOS]
         
-        for i in tqdm(range(1500)):
-            seq_len = i+1
-            tgt_mask = np.triu(np.ones((1, seq_len, seq_len)), k=1).astype('uint8')
-            tgt_mask = (torch.from_numpy(tgt_mask) == 0).cuda()
-            tgt_wordvec = list(map(lambda x: vec[x], tgt))
-            dec_output = self.decoder(torch.cuda.FloatTensor([tgt_wordvec]), encoder_output, tgt_mask=tgt_mask)
-            predicted_output = self.adaptive_softmax.predict(dec_output.view(-1, self.hidden_size)).tolist()
-            next_word = predicted_output[-1]
-            tgt.append(next_word)
-            if next_word == EOS: break
+        if beam_size == None:
+            tgt = [SOS]
+            
+            for i in tqdm(range(max_len)):
+                seq_len = i+1
+                tgt_mask = np.triu(np.ones((1, seq_len, seq_len)), k=1).astype('uint8')
+                tgt_mask = (torch.from_numpy(tgt_mask) == 0).cuda()
+                tgt_wordvec = list(map(lambda x: vec[x], tgt))
+                dec_output = self.decoder(torch.cuda.FloatTensor([tgt_wordvec]), encoder_output, tgt_mask=tgt_mask)
+                predicted_output = self.adaptive_softmax.predict(dec_output.view(-1, self.hidden_size)[-1].unsqueeze(0)).tolist()
+                next_word = predicted_output[0]
+                tgt.append(next_word)
+                if next_word == EOS: break
 
-        return tgt
+            return tgt
+        else:
+            tgt_probs = torch.Tensor([1] * beam_size)
+            tgt_candidates = [[SOS]] * beam_size
+            
+            for i in tqdm(range(max_len)):
+                seq_len = i+1
+                tgt_mask = np.triu(np.ones((1, seq_len, seq_len)), k=1).astype('uint8')
+                tgt_mask = (torch.from_numpy(tgt_mask) == 0).cuda()
+                candidates = []
+
+                for beam_idx in range(beam_size):                
+                    tgt_wordvec = list(map(lambda x: vec[x], tgt_candidates[beam_idx]))
+                    dec_output = self.decoder(torch.cuda.FloatTensor([tgt_wordvec]), encoder_output, tgt_mask=tgt_mask)
+                    predicted_prob = self.adaptive_softmax.log_prob(dec_output.view(-1, self.hidden_size)[-1].unsqueeze(0))
+                    topk_probs, topk_idxs = predicted_prob[0].topk(beam_size)
+                    topk_conditional_probs = topk_probs * tgt_probs[beam_idx]
+                    topk_tgt_candiates = list(map(lambda x: tgt_candidates[beam_idx] + [x], topk_idxs.tolist()))
+                    candidates.extend(list(zip(topk_conditional_probs.tolist(), topk_tgt_candiates)))
+                
+                topk_candidates = list(sorted(candidates, key=lambda x: x[0], reverse=True))[:beam_size]
+                for index, (tgt_prob, tgt_candidate) in enumerate(topk_candidates):
+                    tgt_probs[index] = tgt_probs[index] * tgt_prob
+                    tgt_candidates[index] = tgt_candidate
+                    
+            return tgt_candidates[torch.argmax(tgt_probs).tolist()]
 
 class LanGenNoEmbed(nn.Module):
     def __init__(self, vocab, hidden_size, num_layer):
