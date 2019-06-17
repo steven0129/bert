@@ -5,7 +5,6 @@ import random
 from tqdm import tqdm
 from gensim.models.fasttext import FastText
 text = '大理國無量山無量劍派的練武廳中，舉辦了五年一次的比武鬥劍大會，由無量劍的東、北、西三宗互相比試。此次是第九次大會。'
-#text = '司空玄為逼鍾靈交出解藥來歷，便讓段譽服下斷腸散，以此脅迫鍾靈。'
 jieba.load_userdict('bert-model/dict-traditional.txt')
 jieba.suggest_freq('<newline>', True)
 
@@ -25,7 +24,7 @@ with open('bert-model/TF.csv') as TF:
 
 del word2vec
 
-model = modeling.TransformerNoEmbed(vocab=vocab, hidden_size=1024, enc_num_layer=3, dec_num_layer=6)
+model = modeling.BertNoEmbed(vocab=vocab, hidden_size=1024, enc_num_layer=3)
 model.eval()
 model.cuda()
 checkpoint = torch.load('checkpoint-generator-pretrain/bert-LanGen-last.pt')
@@ -37,10 +36,12 @@ print(f'Testing Loss: {checkpoint["testing_loss"]}')
 
 summary = text
 summary = list(jieba.cut(summary))
-random.shuffle(summary)
+# random.shuffle(summary)
 summary.insert(0, '<SOS>')
 summary.append('<EOS>')
 wordvec_summaries = list(map(lambda x: vec[vocab[x]], summary))
-target = model.inference(torch.FloatTensor(wordvec_summaries).unsqueeze(0).cuda(), vec=vec, beam_size=None)
-result = ''.join(list(map(lambda x: id2vocab[x], target)))
+inputTensor = torch.FloatTensor(wordvec_summaries).cuda()
+inputTensor = torch.cat((inputTensor, torch.zeros(500 - inputTensor.size(0), inputTensor.size(1)).cuda()))
+target = model.inference(inputTensor.unsqueeze(0).cuda())
+result = ''.join(list(map(lambda x: id2vocab[x], target.tolist())))
 print(result)

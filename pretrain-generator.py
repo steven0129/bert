@@ -10,14 +10,13 @@ from gensim.models.fasttext import FastText
 from torch.autograd import Variable
 from torch import nn
 from pytorch_pretrained_bert import BertAdam
-from pytorch_pretrained_bert.optimization import WarmupLinearSchedule
+from pytorch_pretrained_bert.optimization import WarmupHalfLinearSchedule, WarmupCosineWithWarmupRestartsSchedule
 
 random.seed(0)
 vis = visdom.Visdom()
 EPOCH = 2000
 jieba.load_userdict('bert-model/dict-traditional.txt')
 jieba.suggest_freq('<newline>', True)
-cosSim = nn.CosineSimilarity()
 
 # Load vocabularies
 word2vec = FastText.load_fasttext_format('bert-model/wordvec-large.dim1024')
@@ -35,7 +34,16 @@ with open('bert-model/TF.csv') as TF:
 del word2vec
 
 # BERT Model
-model = modeling.TransformerNoEmbed(vocab=vocab, hidden_size=1024, enc_num_layer=3, dec_num_layer=6)
+model = modeling.BertNoEmbed(vocab=vocab, hidden_size=1024, enc_num_layer=3)
+
+def weight_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        torch.nn.init.xavier_uniform(m.weight.data)
+        if m.bias is not None:
+            m.bias.data.fill_(0)
+
+model.apply(weight_init)
 model.cuda()
 label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
 label_smoothing.cuda()
@@ -77,8 +85,8 @@ with open('pair.csv') as PAIR:
 random.Random(0).shuffle(data)
 training_data = data[:round(len(data) * 0.8)]
 testing_data = data[round(len(data) * 0.8):]
-#optimizer = BertAdam(model.parameters(), lr=0.001)
-optimizer = BertAdam(model.parameters(), lr=0.001, weight_decay=0.1, schedule=WarmupLinearSchedule(warmup=0.005, t_total=EPOCH * len(training_data)))
+#optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+optimizer = BertAdam(model.parameters(), lr=0.001, weight_decay=0.1, schedule=WarmupHalfLinearSchedule(warmup=0.05, t_total=EPOCH * len(training_data)))
 BATCH_SIZE = 1
 training_losses = []
 testing_losses = []
@@ -91,9 +99,13 @@ for epoch in tqdm(range(EPOCH)):
         optimizer.zero_grad()
         
         inputTensor = torch.FloatTensor(wordvec_summaries).cuda()
-        tgtInputTensor = torch.FloatTensor(wordvec_texts[:-1]).cuda()
-        tgtTensor = torch.LongTensor(idx_texts[1:]).cuda()
-        output = model(inputTensor.unsqueeze(0), tgtInputTensor.unsqueeze(0))
+        tgtTensor = torch.LongTensor(idx_texts).cuda()
+        
+        non_masked_position = torch.ones(inputTensor.size(0)).cuda()
+        masked_position = torch.zeros(tgtTensor.size(0) - inputTensor.size(0)).cuda()
+        attn_masked = torch.cat((non_masked_position, masked_position))
+        inputTensor = torch.cat((inputTensor, torch.zeros(tgtTensor.size(0) - inputTensor.size(0), inputTensor.size(1)).cuda()))
+        output = model(inputTensor.unsqueeze(0), attn_masked.unsqueeze(0))
         loss = label_smoothing(output, tgtTensor)
         training_loss_sum += loss.item()
         loss.backward()
@@ -102,9 +114,13 @@ for epoch in tqdm(range(EPOCH)):
 
     for idx_texts, wordvec_texts, wordvec_summaries in tqdm(testing_data):
         inputTensor = torch.FloatTensor(wordvec_summaries).cuda()
-        tgtInputTensor = torch.FloatTensor(wordvec_texts[:-1]).cuda()
-        tgtTensor = torch.LongTensor(idx_texts[1:]).cuda()
-        output = model(inputTensor.unsqueeze(0), tgtInputTensor.unsqueeze(0))
+        tgtTensor = torch.LongTensor(idx_texts).cuda()
+        
+        non_masked_position = torch.ones(inputTensor.size(0)).cuda()
+        masked_position = torch.zeros(tgtTensor.size(0) - inputTensor.size(0)).cuda()
+        attn_masked = torch.cat((non_masked_position, masked_position))
+        inputTensor = torch.cat((inputTensor, torch.zeros(tgtTensor.size(0) - inputTensor.size(0), inputTensor.size(1)).cuda()))
+        output = model(inputTensor.unsqueeze(0), attn_masked.unsqueeze(0))
         loss = label_smoothing(output, tgtTensor)
         testing_loss_sum += loss.item()
 

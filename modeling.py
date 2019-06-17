@@ -9,6 +9,22 @@ from decoder import Decoder
 from tqdm import tqdm
 
 MODEL_PATH = 'bert-model'
+class BertNoEmbed(nn.Module):
+    def __init__(self, vocab, hidden_size, enc_num_layer):
+        super(BertNoEmbed, self).__init__()
+        self.encoder = BertModelNoEmbed(config=BertConfig(vocab_size_or_config_json_file=len(vocab), hidden_size=hidden_size, num_hidden_layers=enc_num_layer, num_attention_heads=8, intermediate_size=3072, type_vocab_size=1, hidden_dropout_prob=0.1, attention_probs_dropout_prob=0.1))
+        self.hidden_size = hidden_size
+        self.adaptive_softmax = nn.AdaptiveLogSoftmaxWithLoss(hidden_size, len(vocab), cutoffs=[1000])
+
+    def forward(self, x, attn_mask):
+        encoder_layers, _= self.encoder(x, attention_mask=attn_mask)
+        out = self.adaptive_softmax.log_prob(encoder_layers[-1].view(-1, self.hidden_size))
+        return out
+
+    def inference(self, x, attn_mask):
+        encoder_layers, _= self.encoder(x, attention_mask=attn_mask)
+        out = self.adaptive_softmax.predict(encoder_layers[-1].view(-1, self.hidden_size))
+        return out
 
 class TransformerNoEmbed(nn.Module):
     def __init__(self, vocab, hidden_size, enc_num_layer, dec_num_layer):
