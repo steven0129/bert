@@ -150,7 +150,7 @@ class TextCNNClassify(nn.Module):
         channel_num = 1
         filter_num = 100
         filter_sizes = [3, 4, 5]
-        embedding_dim = 768
+        embedding_dim = 1024
 
         self.embeddings = nn.Embedding.from_pretrained(embeddings=weight, freeze=True)
         self.num_labels = num_labels

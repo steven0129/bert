@@ -9,3 +9,4 @@ pair+lcstcs*.csv
 __pycache__/
 wordvec-large*
 lcstcs.csv
+eval_*.csv
