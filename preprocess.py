@@ -1,11 +1,12 @@
 import jieba
+import sys
 from tqdm import tqdm
 from collections import Counter
 
 jieba.load_userdict('bert-model/dict-traditional.txt')
 jieba.suggest_freq('<newline>', True)
-
 hashTable = {}
+classes = set()
 
 def addKey(key):
     try:
@@ -13,11 +14,12 @@ def addKey(key):
     except:
         hashTable[key] = 1
 
-print('前處理詞頻...')
-
-with open('pair+lcstcs.csv') as PAIR:
+print('前處理詞頻與類別...')
+with open('pair.csv') as PAIR:
     for line in tqdm(PAIR):
-        [text, summary] = line.split(',')
+        [text, summary, label] = line.split(',')
+        
+        classes.add(label.replace('\n', ''))
         addKey('<SOS>')
         addKey('<EOS>')
         paras = text.split('<newline>')
@@ -26,8 +28,8 @@ with open('pair+lcstcs.csv') as PAIR:
                 addKey(word)
             addKey('<newline>')
 
-        for i in range(len(text) - len(summary)):
-            addKey('<PAD>')
+        # for i in range(len(text) - len(summary)):
+        #     addKey('<PAD>')
 
         for word in jieba.cut(summary):
             addKey(word)
@@ -35,16 +37,20 @@ with open('pair+lcstcs.csv') as PAIR:
     counts = sorted(hashTable.items(), key=lambda x: x[1], reverse=True)
     top10_texts = list(map(lambda x: x[0], counts[:10]))
     print(f'Top 10: {",".join(top10_texts)}')
+    print(f'{len(classes)} Classes: {",".join(classes)}')
 
     with open('bert-model/TF.csv', 'w') as TF:
         for text, count in tqdm(counts):
             TF.write(f'{text},{count}\n')
 
-print('前處理FastText...')
+    with open('bert-model/classes.txt', 'w') as CLASS:
+        CLASS.write(f'{",".join(classes)}')
 
+print('前處理FastText...')
 with open('pair+lcstcs.csv') as PAIR:
     for line in tqdm(PAIR):
-        [text, summary] = line.split(',')
+        text = line.split(',')[0]
+        summary = line.split(',')[1]
 
         with open('bert-model/sents.txt', 'a') as OUT:
             OUT.write('<SOS> ')
@@ -63,7 +69,7 @@ with open('pair+lcstcs.csv') as PAIR:
 
             OUT.write('<EOS> ')
 
-            for i in range(len(text) - len(summary)):
-                OUT.write('<PAD> ')
+            # for i in range(len(text) - len(summary)):
+            #     OUT.write('<PAD> ')
 
             OUT.write('\n')
