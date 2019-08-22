@@ -47,7 +47,7 @@ model.apply(weight_init)
 model.cuda()
 label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
 label_smoothing.cuda()
-SAVE_EVERY = 50
+SAVE_EVERY = 5
 PENALTY_EPOCH = -1
 DRAW_LEARNING_CURVE = False
 data = []
@@ -131,7 +131,7 @@ for epoch in tqdm(range(EPOCH)):
             'testing_loss': testing_loss_sum / len(testing_data),
             'training_loss': training_loss_sum / len(training_data),
             'optimizer': optimizer.state_dict()
-        }, f'checkpoint-generator-pretrain/bert-LanGen-epoch{epoch + 1}.pt')
+        }, f'checkpoint/bert-LanGen-epoch{epoch + 1}.pt')
 
         torch.save({
             'epoch': epoch + 1,
@@ -139,7 +139,7 @@ for epoch in tqdm(range(EPOCH)):
             'testing_loss': testing_loss_sum / len(testing_data),
             'training_loss': training_loss_sum / len(training_data),
             'optimizer': optimizer.state_dict()
-        }, f'checkpoint-generator-pretrain/bert-LanGen-last.pt')
+        }, f'checkpoint/bert-LanGen-last.pt')
 
     log = f'epoch = {epoch + 1}, training_loss = {training_loss_sum / len(training_data)}, testing_loss = {testing_loss_sum / len(testing_data)}'
     training_losses.append(training_loss_sum / len(training_data))
