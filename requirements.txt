@@ -1,5 +1,4 @@
 jieba==0.39
 tqdm==4.26.0
 gensim==3.5.0
-pytorch_pretrained_bert==0.4.0
 visdom==0.1.8.8
