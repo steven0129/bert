@@ -11,6 +11,8 @@ from torch.autograd import Variable
 from torch import nn
 from pytorch_pretrained_bert import BertAdam
 from pytorch_pretrained_bert.optimization import WarmupHalfLinearSchedule, WarmupCosineWithWarmupRestartsSchedule
+from loss import FocalLoss
+
 
 random.seed(0)
 vis = visdom.Visdom()
@@ -45,8 +47,11 @@ def weight_init(m):
 
 model.apply(weight_init)
 model.cuda()
-label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
-label_smoothing.cuda()
+
+# label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
+# label_smoothing.cuda()
+focal_loss = FocalLoss(class_num=len(vocab))
+focal_loss.cuda()
 SAVE_EVERY = 5
 PENALTY_EPOCH = -1
 DRAW_LEARNING_CURVE = False
@@ -106,7 +111,8 @@ for epoch in tqdm(range(EPOCH)):
         attn_masked = torch.cat((non_masked_position, masked_position))
         inputTensor = torch.cat((inputTensor, torch.zeros(tgtTensor.size(0) - inputTensor.size(0), inputTensor.size(1)).cuda()))
         output = model(inputTensor.unsqueeze(0), attn_masked.unsqueeze(0))
-        loss = label_smoothing(output, tgtTensor)
+        # loss = label_smoothing(output, tgtTensor)
+        loss = focal_loss(output, tgtTensor)
         training_loss_sum += loss.item()
         loss.backward()
 
@@ -121,14 +127,15 @@ for epoch in tqdm(range(EPOCH)):
         attn_masked = torch.cat((non_masked_position, masked_position))
         inputTensor = torch.cat((inputTensor, torch.zeros(tgtTensor.size(0) - inputTensor.size(0), inputTensor.size(1)).cuda()))
         output = model(inputTensor.unsqueeze(0), attn_masked.unsqueeze(0))
-        loss = label_smoothing(output, tgtTensor)
+        # loss = label_smoothing(output, tgtTensor)
+        loss = focal_loss(output, tgtTensor)
         testing_loss_sum += loss.item()
 
     if (epoch + 1) % SAVE_EVERY == 0:
         torch.save({
             'epoch': epoch + 1,
             'state': model.state_dict(),
-            'testing_loss': testing_loss_sum / len(testing_data),
+            'full_model': model,
             'training_loss': training_loss_sum / len(training_data),
             'optimizer': optimizer.state_dict()
         }, f'checkpoint/bert-LanGen-epoch{epoch + 1}.pt')
@@ -136,7 +143,7 @@ for epoch in tqdm(range(EPOCH)):
         torch.save({
             'epoch': epoch + 1,
             'state': model.state_dict(),
-            'testing_loss': testing_loss_sum / len(testing_data),
+            'full_model': model,
             'training_loss': training_loss_sum / len(training_data),
             'optimizer': optimizer.state_dict()
         }, f'checkpoint/bert-LanGen-last.pt')
