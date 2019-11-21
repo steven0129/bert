@@ -6,7 +6,6 @@ from gensim.models.fasttext import FastText
 from tqdm import tqdm
 from pyltp import Postagger
 
-model = torch.load('checkpoint-generator-pretrain/bert-LanGen-last.pt')['full_model']
 MODEL_PATH = 'bert-model'
 jieba.load_userdict('bert-model/dict-traditional.txt')
 seq_len = 512
@@ -27,6 +26,7 @@ with open('bert-model/TF.csv') as TF:
 
 del word2vec
 
+model = torch.load('checkpoint-generator-pretrain/bert-LanGen-last.pt')['full_model']
 POS = Postagger()
 POS.load('bert-model/ltp_data_v3.4.0/pos.model')
 
