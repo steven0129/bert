@@ -36,7 +36,7 @@ print('Tokenization...')
 data = []
 with open('pair.csv') as PAIR:
     for line in tqdm(PAIR):
-        [text, summary, _] = line.split(',')
+        [text, summary, plot] = line.split(',')
         texts = []
         summaries = []
         paras = text.split('<newline>')
@@ -54,7 +54,7 @@ with open('pair.csv') as PAIR:
         summaries.insert(0, '<SOS>')
         summaries.append('<EOS>')
         
-        data.append((texts[:1500], summaries[:1500]))
+        data.append((texts[:1500], summaries[:1500], plot.replace('\n', '')))
 
 random.Random(0).shuffle(data)
 training_data = data[:round(len(data) * 0.8)]
@@ -64,7 +64,7 @@ model = modeling.BertNoEmbed(vocab=vocab, hidden_size=1024, enc_num_layer=3)
 model.eval()
 model.cuda()
 smoother = SmoothingFunction()
-checkpoint = torch.load('checkpoint/bert-LanGen-last.pt')
+checkpoint = torch.load('checkpoint-generator-pretrain/log20190619/bert-LanGen-epoch2000.pt')
 model.load_state_dict(checkpoint['state'])
 print('Info of model:')
 print(f'Epoch: {checkpoint["epoch"]}')
@@ -104,21 +104,62 @@ def eval_bleu(summaries, ans, mode='normal', random_seed=0, smoother=smoother.me
     else:
         return sentence_bleu([ans], target, smoothing_function=smoother)
 
-# evaluation
-with open('eval_train.csv', 'w') as FILE:
-    writer = csv.writer(FILE)
-    writer.writerow(['normal', 'random_partially', 'random'])
-    for texts, summaries in training_data:
-        normal_bleu = eval_bleu(summaries, texts)
-        random_partial_bleu = eval_bleu(summaries, texts, mode='random_partially')
-        random_bleu = eval_bleu(summaries, texts, mode='random')
-        writer.writerow([normal_bleu, random_partial_bleu, random_bleu])
+def predict(summaries, ans, mode='normal', random_seed=0, smoother=smoother.method1):
+    summary = summaries
+    seq_len = len(ans)
+    if mode == 'random':
+        random.Random(random_seed).shuffle(summary)
+    elif mode == 'random_partially':
+        pos = list(POS.postag(summary))
+        pos_set = list(set(POS.postag(summary)))
+        for p in pos_set:
+            order_by_pos = [(i, x) for i, x in enumerate(summary) if pos[i]==p]
+            [idxs, words] = zip(*order_by_pos)
+            idxs = list(idxs)
+            words = list(words)
+            random.Random(0).shuffle(idxs)
+            for i, idx in enumerate(idxs):
+                summary[idx] = words[i]
 
-with open('eval_test.csv', 'w') as FILE:
-    writer = csv.writer(FILE)
-    writer.writerow(['normal', 'random_partially', 'random'])
-    for texts, summaries in testing_data:
-        normal_bleu = eval_bleu(summaries, texts)
-        random_partial_bleu = eval_bleu(summaries, texts, mode='random_partially')
-        random_bleu = eval_bleu(summaries, texts, mode='random')
-        writer.writerow([normal_bleu, random_partial_bleu, random_bleu])
+    wordvec_summaries = list(map(lambda x: vec[vocab[x]], summary))
+    inputTensor = torch.FloatTensor(wordvec_summaries).cuda()
+    inputTensor = torch.cat((inputTensor, torch.zeros(seq_len - inputTensor.size(0), inputTensor.size(1)).cuda()))
+
+    non_masked_position = torch.ones(inputTensor.size(0)).cuda()
+    masked_position = torch.zeros(seq_len - inputTensor.size(0)).cuda()
+    attn_masked = torch.cat((non_masked_position, masked_position))
+
+    target = model.inference(inputTensor.unsqueeze(0).cuda(), attn_masked.unsqueeze(0).cuda())
+    target = list(map(lambda x: id2vocab[x], target.tolist()))
+    if '<EOS>' in target:
+        EOS_pos = target.index('<EOS>')
+        return ''.join(target[:EOS_pos + 1])
+    else:
+        return ''.join(target)
+
+# evaluation
+# with open('eval_train.csv', 'w') as FILE:
+#     writer = csv.writer(FILE)
+#     writer.writerow(['plot', 'normal', 'random_partially', 'random'])
+#     for texts, summaries, plot in training_data:
+#         normal_bleu = eval_bleu(summaries, texts)
+#         random_partial_bleu = eval_bleu(summaries, texts, mode='random_partially')
+#         random_bleu = eval_bleu(summaries, texts, mode='random')
+#         writer.writerow([plot, normal_bleu, random_partial_bleu, random_bleu])
+
+# with open('eval_test.csv', 'w') as FILE:
+#     writer = csv.writer(FILE)
+#     writer.writerow(['plot', 'normal', 'random_partially', 'random'])
+#     for texts, summaries, plot in testing_data:
+#         normal_bleu = eval_bleu(summaries, texts)
+#         random_partial_bleu = eval_bleu(summaries, texts, mode='random_partially')
+#         random_bleu = eval_bleu(summaries, texts, mode='random')
+#         writer.writerow([plot, normal_bleu, random_partial_bleu, random_bleu])
+
+# predict
+with open('predict.txt', 'w') as FILE:
+    text, summary, plot = training_data[744]
+    
+    result = predict(summary, text)
+    FILE.write(''.join(summary) + '\n')
+    FILE.write(result)
