@@ -11,7 +11,7 @@ scp steven@140.123.97.228:/data/bert-model .
 ## Docker環境配置
 
 ```
-sudo docker run --runtime=nvidia --rm -it -e LANG=C.UTF-8 -v ~/Desktop/bert-test/bert:/home -p 8097:8097 steven0129/cuda-cudnn-pytorch:9.1-7-1.0.0
+sudo docker run --runtime=nvidia --rm -it -e LANG=C.UTF-8 -v /data/bert:/home -p 8097:8097 steven0129/cuda-cudnn-pytorch:9.1-7-1.0.0
 ```
 
 ## 安裝相關python套件
@@ -20,7 +20,7 @@ Docker container run起來後，執行以下指令
 
 ```
 cd /home
-pip install -r requirement.txt
+pip install -r requirements.txt
 cd /
 git clone https://github.com/steven0129/pytorch-pretrained-BERT.git
 cd pytorch-pretrained-BERT
