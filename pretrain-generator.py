@@ -47,6 +47,7 @@ def weight_init(m):
 
 model.apply(weight_init)
 model.cuda()
+
 # label_smoothing = modeling.LabelSmoothing(len(vocab), 0, 0.1)
 # label_smoothing.cuda()
 focal_loss = FocalLoss(class_num=len(vocab))
@@ -137,7 +138,7 @@ for epoch in tqdm(range(EPOCH)):
             'full_model': model,
             'training_loss': training_loss_sum / len(training_data),
             'optimizer': optimizer.state_dict()
-        }, f'checkpoint-generator-pretrain/bert-LanGen-epoch{epoch + 1}.pt')
+        }, f'checkpoint/bert-LanGen-epoch{epoch + 1}.pt')
 
         torch.save({
             'epoch': epoch + 1,
@@ -145,7 +146,7 @@ for epoch in tqdm(range(EPOCH)):
             'full_model': model,
             'training_loss': training_loss_sum / len(training_data),
             'optimizer': optimizer.state_dict()
-        }, f'checkpoint-generator-pretrain/bert-LanGen-last.pt')
+        }, f'checkpoint/bert-LanGen-last.pt')
 
     log = f'epoch = {epoch + 1}, training_loss = {training_loss_sum / len(training_data)}, testing_loss = {testing_loss_sum / len(testing_data)}'
     training_losses.append(training_loss_sum / len(training_data))
