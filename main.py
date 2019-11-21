@@ -227,7 +227,7 @@ for epoch in tqdm(range(EPOCH)):
         torch.save({
             'epoch': epoch + 1,
             'state': model.state_dict(),
-            # 'testing_loss': testing_loss_sum / len(testing_data),
+            'full_model': model,
             'training_loss': g_loss_sum / (len(training_data) * G_STEP),
             'optimizer': optimizer.state_dict()
         }, f'checkpoint/bert-LanGen-epoch{epoch + 1}.pt')
@@ -235,7 +235,7 @@ for epoch in tqdm(range(EPOCH)):
         torch.save({
             'epoch': epoch + 1,
             'state': model.state_dict(),
-            # 'testing_loss': testing_loss_sum / len(testing_data),
+            'full_model': model,
             'training_loss': g_loss_sum / (len(training_data) * G_STEP),
             'optimizer': optimizer.state_dict()
         }, f'checkpoint/bert-LanGen-last.pt')
