@@ -45,3 +45,9 @@ python pretrain-generator.py
 ```
 python main.py
 ```
+
+## 生成文字
+
+```
+python predict.py
+```
